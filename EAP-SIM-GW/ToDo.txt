@@ -1,0 +1,7 @@
+compiler warnings
+
+USIM quintuplets 250993254188441 - how to react on Delimiter?
+Try to send service request again when got delimiter.
+
+Translate errors to  text (unknown subscriber etc..)
+
