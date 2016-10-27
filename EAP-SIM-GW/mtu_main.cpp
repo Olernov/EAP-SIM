@@ -60,7 +60,6 @@ int* client_socket;
 struct sockaddr_in* client_addr;
 int listen_socket, newsockfd;
 
-int debug_mode=0;
 int emulation_mode=0;
 bool bShutdownInProgress=false;
 
@@ -626,13 +625,12 @@ void Send_Response_to_Client(int dlg_id)
             IPAddr2Text(&client_addr[ss7Req.socket_index].sin_addr,address_buffer,sizeof(address_buffer)),ss7Req.socket_index);
     }
 
-    if(!debug_mode) {
-        if(!send(client_socket[ss7Req.socket_index],socket_send_buffer,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),0)) {
-            // sending response failed
-        log("sending response failed: %d",SOCK_ERR);
-        fprintf(stderr, "%s: sending response failed: %d\n",program,SOCK_ERR);
-        }
+    if(!send(client_socket[ss7Req.socket_index],socket_send_buffer,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),0)) {
+        // sending response failed
+    log("sending response failed: %d",SOCK_ERR);
+    fprintf(stderr, "%s: sending response failed: %d\n",program,SOCK_ERR);
     }
+
     }
     catch(...) {
         log("Exception caught in Send_Response_to_Client");
@@ -986,9 +984,60 @@ bool ProcessIncomingConnection()
     return true;
 }
 
-/*
- * Main function for EAP-SIM Gateway
- */
+
+bool ProcessSocketEvents()
+{
+    struct timeval tv;
+    tv.tv_sec = 0;  // time-out
+    tv.tv_usec = 100;
+    fd_set read_set, write_set;
+    FD_ZERO( &read_set );
+    FD_ZERO( &write_set );
+    FD_SET( listen_socket, &read_set );
+    int max_socket = listen_socket;
+    for(int i = 0; i < gwOptions.max_connections; i++) {
+        if(client_socket[i] != FREE_SOCKET) {
+            FD_SET( client_socket[i], &read_set );
+            if(client_socket[i] > max_socket)
+                max_socket=client_socket[i];
+        }
+    }
+    const int SELECT_TIMEOUT = 0;
+    int socketCount;
+    if ( (socketCount = select( max_socket + 1, &read_set, &write_set, NULL, &tv )) != SELECT_TIMEOUT) {
+        if(socketCount == SOCKET_ERROR) {
+            log("select function returned error: %d", SOCK_ERR);
+            return false;
+        }
+        if(FD_ISSET(listen_socket, &read_set)) {
+            ProcessIncomingConnection();
+        }
+        for(int sockIndex=0; sockIndex < gwOptions.max_connections; sockIndex++) {
+          if(FD_ISSET(client_socket[sockIndex], &read_set)) {
+            int nReceived = recv(client_socket[sockIndex], socket_recv_buffer, sizeof(socket_recv_buffer), 0);
+            if(nReceived <= 0) {
+                log("Error %d receiving data on connection #%d. Closing connection..." , SOCK_ERR, sockIndex);
+                CloseSocket(client_socket[sockIndex]);
+                client_socket[sockIndex] = FREE_SOCKET;
+                continue;
+            }
+            char address_buffer[64];
+            log("%d bytes received from %s (connection #%d). Processing request(s) ...",nReceived,
+                IPAddr2Text(&client_addr[sockIndex].sin_addr, address_buffer, sizeof(address_buffer)), sockIndex);
+            int nBytesProcessed = 0;
+            while(nBytesProcessed < nReceived) {
+              int nRequestLen = ProcessRequest(sockIndex, nBytesProcessed);
+              if(nRequestLen >= 0)
+                  nBytesProcessed += nRequestLen;
+              else
+                  break;
+            }
+          }
+       }
+    }
+    return true;
+}
+
 int main(int argc, char* argv[])
 {
   int cli_error;
@@ -1037,21 +1086,18 @@ int main(int argc, char* argv[])
     exit(1);
   }
 
-  if (strlen(gwOptions.service_centre) == 0)
-  {
-    fprintf(stderr, "%s: SERVICE_CENTRE option missing in ini-file\n", program);
-    exit(1);
-  }
+    if (strlen(gwOptions.service_centre) == 0)
+    {
+        fprintf(stderr, "%s: SERVICE_CENTRE option missing in ini-file\n", program);
+        exit(1);
+    }
 
-  if(argc>2) {
-    if(!strcmp(argv[2],"-debug") || !strcmp(argv[2],"-DEBUG"))
-        debug_mode=1;
+    if(argc>2) {
+        if(!strcmp(argv[2],"-emul") || !strcmp(argv[2],"-EMUL"))
+            emulation_mode=1;
+    }
 
-    if(!strcmp(argv[2],"-emul") || !strcmp(argv[2],"-EMUL"))
-        emulation_mode=1;
-  }
 
-  if(!debug_mode) {
       time_t ttToday;
       tm* tmToday;
       time(&ttToday);
@@ -1128,174 +1174,19 @@ int main(int argc, char* argv[])
 
       // Main program loop
       while(true) {
-          ProcessPendingSS7Messages();
-
-//          try {
-              // No more SS7 messages to process - check our dialogue queue
-//              time_t tNow;
-//              time(&tNow);
-//              if(tNow - tLastQueueCheckTime > gwOptions.queue_check_period) {
-//                  // once in 30 seconds check requests queue for hanging dialogues
-//                  DiscardHangingRequests(tNow);
-//                  time(&tLastQueueCheckTime);
+        ProcessPendingSS7Messages();
         DiscardHangingRequestsSchedule();
-
         if (!bShutdownInProgress) {
             bShutdownInProgress = IsShutdownSignalSet();
         }
-
-         if(bShutdownInProgress && ss7RequestMap.size() == 0) {
+        if(bShutdownInProgress && ss7RequestMap.size() == 0) {
             // all requests are processed, close connections
             CloseSockets();
             log("Gateway shutdown.");
             fclose(fLog);
             exit(0);
-          }
-
-          // Check new client connection and requests
-          try {
-          struct timeval tv;
-          tv.tv_sec = 0;  // time-out
-          tv.tv_usec = 100;
-          fd_set read_set, write_set;
-          FD_ZERO( &read_set );
-          FD_ZERO( &write_set );
-          FD_SET( listen_socket, &read_set );
-          int max_socket = listen_socket;
-          for(int i = 0; i < gwOptions.max_connections; i++) {
-              if(client_socket[i] != FREE_SOCKET) {
-                  FD_SET( client_socket[i], &read_set );
-                  if(client_socket[i] > max_socket)
-                      max_socket=client_socket[i];
-              }
-          }
-          int res;
-          if ( (res = select( max_socket + 1, &read_set, &write_set, NULL, &tv )) !=0) {
-              if(res == -1) {
-                  log("select function returned error: %d", SOCK_ERR);
-                  sleep(10); // not to overflow log files and stderr
-                  continue;
-              }
-
-              if(FD_ISSET(listen_socket, &read_set)) {
-                  ProcessIncomingConnection();
-              }
-
-              for(int i=0; i<gwOptions.max_connections; i++) {
-                if(FD_ISSET(client_socket[i], &read_set)) {
-
-                  int nReceived = recv(client_socket[i], socket_recv_buffer, sizeof(socket_recv_buffer), 0);
-                  if(nReceived <= 0) {
-                      log("Error %d receiving data on connection #%d. Closing connection..." ,SOCK_ERR,i);
-                      // set socket descriptor to 0
-                      CloseSocket(client_socket[i]);
-                      client_socket[i] = FREE_SOCKET;
-                      break;
-                  }
-                  char address_buffer[64];
-                  log("%d bytes received from %s (connection #%d). Processing request(s) ...",nReceived,
-                      IPAddr2Text(&client_addr[i].sin_addr,address_buffer,sizeof(address_buffer)),i);
-                  nBytesProcessed = 0;
-                  while(nBytesProcessed<nReceived) {
-                    nRequestLen = ProcessRequest(i,nBytesProcessed);
-                    if(nRequestLen >= 0)
-                        nBytesProcessed += nRequestLen;
-                    else
-                        break;
-                  }
-                }
-             }
-
-          }
-          }
-          catch(...) {
-              log("Exception caught in main loop: processing socket events");
-              return -999;
-          }
+        }
+        ProcessSocketEvents();
     }
-
-
-}
-  else {
-    // debug mode - no creating sockets, just get triplets for IMSI given in command line
-    if(argc>2) {
-        strcpy(imsi,argv[2]);
-        if(argc>3) {
-            if (strtou32(&temp_u32, argv[3]) != 0) {
-                // error
-                fprintf(stderr,"Wrong attribute value for number of triplets given");
-                exit(1);
-            }
-            if(temp_u32<1 || temp_u32>5) {
-                fprintf(stderr,"Number of triplets must be from 1 to 5. Given value=%ld",temp_u32);
-                exit(1);
-            }
-            triplets_num=(u16)temp_u32;
-        }
-        else
-            triplets_num=DEFAULT_TRIPLETS_NUM;
-
-        if((nDialogueID=Create_Request(1,imsi,triplets_num,-1))==-1) {
-            fprintf(stderr, "%s: Create_Request failed, all dialogues are busy",program);
-            // send report to Policy Server
-            // .....
-        }
-        int res;
-        if ((res=MTU_open_dlg(nDialogueID,imsi)) != 0) {
-            if(res==-1) {
-                ss7RequestMap.at(nDialogueID).state = rs_finished;
-                Send_Response_to_Client(nDialogueID);
-                ss7RequestMap.erase(nDialogueID);
-            }
-
-        }
-
-        ss7RequestMap.at(nDialogueID).state = rs_wait_opn_cnf;
-        time(&ss7RequestMap.at(nDialogueID).state_change_time);
-
-        HDR *h;               /* received message */
-        MSG *m;               /* received message */
-
-        while (true)
-        {
-          if ((h = GCT_receive(gwOptions.mtu_mod_id)) != 0)
-          {
-            m = (MSG *)h;
-            switch (m->hdr.type)
-            {
-              case MAP_MSG_DLG_IND:
-              case MAP_MSG_SRV_IND:
-                if (gwOptions.log_options & MTU_TRACE_RX)
-                  MTU_display_recvd_msg(m);
-                MTU_smac(m);
-                break;
-
-              default:
-                /*
-                 * Under normal operation we don't expect to receive anything
-                 * else but if we do report the messages.
-                 */
-                if (gwOptions.log_options & MTU_TRACE_RX)
-                  MTU_display_recvd_msg(m);
-                //MTU_disp_err("Unexpected message type");
-                break;
-            }
-            /*
-             * Once we have finished processing the message
-             * it must be released to the pool of messages.
-             */
-            relm(h);
-          }
-          if(ss7RequestMap.find(nDialogueID) == ss7RequestMap.end())
-              // processing finished
-              break;
-
-        } /* end while */
-
-        return 0;
-    }
-  }
-
-  return(0);
 }
 
