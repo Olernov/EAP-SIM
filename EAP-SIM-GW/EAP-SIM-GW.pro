@@ -3,7 +3,10 @@ TARGET = EAP-SIM-GW
 CONFIG   += console
 CONFIG   -= app_bundle
 
-INCLUDEPATH += "C:/DSI/INC"
+
+INCLUDEPATH += "C:/DSI/INC" \
+    "c:/Projects/PolicyServer/utils/src/utils/pspacket" \
+    "c:/Projects/PolicyServer/utils/src/utils"
 DEPENDPATH += "C:/DSI/32"
 
 LIBS += "C:/DSI/LIB32/gctlib.lib" \
@@ -12,14 +15,15 @@ LIBS += "C:/DSI/LIB32/gctlib.lib" \
 
 HEADERS += \
     mtu.h \
-    PSPacket.h \
-    CoACommon.h
+    pspacket.h
+
 
 SOURCES += \
-    PSPacket.cpp \
+    c:/Projects/PolicyServer/utils/src/utils/pspacket/pspacket.cpp \
     mtu_main.cpp \
     mtu_fmt.cpp \
     mtu.cpp
+
 
 QMAKE_LFLAGS = -static -static-libgcc
 CONFIG += static

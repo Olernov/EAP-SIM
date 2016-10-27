@@ -40,13 +40,9 @@
     #define SOCK_ERR errno
 #endif
 
-/*
- *
- * Structure that stores the data entered on the command line
- */
+
 GW_OPTIONS gwOptions;
 GTT_ENTRY gttTable[MAX_GTT_TABLE_SIZE];
-//SS7_REQUEST ss7Request[NUM_OF_DLG_IDS];
 
 std::map<u16,SS7_REQUEST> ss7RequestMap;
 
@@ -60,9 +56,10 @@ char szLogName[1024];
 // socket connection pool
 int* client_socket;
 struct sockaddr_in* client_addr;
+int listen_socket, newsockfd;
 
 int debug_mode=0;
-int preset_mode=0;
+int emulation_mode=0;
 bool bShutdownInProgress=false;
 
 std::multimap<__uint16_t,SPSReqAttr*> mmRequest;
@@ -88,54 +85,65 @@ void log(const char* szFormat, ...) {
     FILE* fNewLog;
 
     try {
-    va_start(pArguments,szFormat);
-    vsprintf(szBuffer, szFormat, pArguments);
+        va_start(pArguments,szFormat);
+        vsprintf(szBuffer, szFormat, pArguments);
 
-    time_t ttToday;
-    tm* tmToday;
-    time(&ttToday);
-    tmToday=localtime(&ttToday);
-    strftime(timBuf,19,"%H:%M:%S",tmToday);
-    if(fLog) {
-#ifdef WIN32
-        sprintf(szNewLogName,"%s\\eapsimgw_%4.4d%2.2d%2.2d.txt",gwOptions.log_path,
-              tmToday->tm_year+1900,tmToday->tm_mon+1,tmToday->tm_mday);
-#else
-        sprintf(szNewLogName,"%s/eapsimgw_%4.4d%2.2d%2.2d.txt",gwOptions.log_path,
-                tmToday->tm_year+1900,tmToday->tm_mon+1,tmToday->tm_mday);
-#endif
-        if(strcmp(szNewLogName,szLogName)) {
-            // date changed, start new log file
-            fNewLog=fopen(szNewLogName,"a");
-            if(fNewLog)  {
-               // new log file opened successfully
-                fclose(fLog);
-                fLog=fNewLog;
-                strcpy(szLogName,szNewLogName);
+        time_t ttToday;
+        tm* tmToday;
+        time(&ttToday);
+        tmToday=localtime(&ttToday);
+        strftime(timBuf,19,"%H:%M:%S",tmToday);
+        if(fLog) {
+    #ifdef WIN32
+            sprintf(szNewLogName,"%s\\eapsimgw_%4.4d%2.2d%2.2d.txt",gwOptions.log_path,
+                  tmToday->tm_year+1900,tmToday->tm_mon+1,tmToday->tm_mday);
+    #else
+            sprintf(szNewLogName,"%s/eapsimgw_%4.4d%2.2d%2.2d.txt",gwOptions.log_path,
+                    tmToday->tm_year+1900,tmToday->tm_mon+1,tmToday->tm_mday);
+    #endif
+            if(strcmp(szNewLogName,szLogName)) {
+                // date changed, start new log file
+                fNewLog=fopen(szNewLogName,"a");
+                if(fNewLog)  {
+                   // new log file opened successfully
+                    fclose(fLog);
+                    fLog=fNewLog;
+                    strcpy(szLogName,szNewLogName);
+                }
+                else {
+                    fprintf(stderr,"EAP-SIM-GW: Date changed, but new log file opening failed. Continue using old log file\n");
+                }
             }
-            else {
-                fprintf(stderr,"EAP-SIM-GW: Date changed, but new log file opening failed. Continue using old log file\n");
-            }
+            fprintf(fLog, "%s %s\n",timBuf,szBuffer);
+            fflush(fLog);
         }
-        fprintf(fLog, "%s %s\n",timBuf,szBuffer);
-        fflush(fLog);
-    }
-//#else
-//    timeval curTime;
-//    gettimeofday(&curTime, NULL);
-//    strftime(timBuf,19,"%H:%M:%S",localtime(&curTime.tv_sec));
-//    if(fLog) {
-//        sprintf(szCurrentLogName,"%s/eapsimgw_%4.4d%2.2d%2.2d.txt",gwOptions.log_path,
-//                tmToday->tm_year+1900,tmToday->tm_mon+1,tmToday->tm_mday);
-//        fprintf(fLog, "%s.%d %s\n",timBuf, curTime.tv_usec / 1000,szBuffer);
-//        fflush(fLog);
-//    }
-//#endif
     }
     catch(...) {
         fprintf(stderr,"EAP-SIM-GW: Exception caught in log function\n");
     }
 }
+
+
+void SetDefaultOptions()
+{
+    gwOptions.mtu_mod_id = DEFAULT_MODULE_ID;
+    gwOptions.mtu_map_id = DEFAULT_MAP_ID;
+    gwOptions.map_version = MTU_MAPV3;
+    gwOptions.mode = MTU_SEND_AUTH_INFO;
+    gwOptions.log_options = DEFAULT_OPTIONS;
+    gwOptions.base_dlg_id = BASE_DLG_ID;
+    gwOptions.num_dlg_ids = NUM_OF_DLG_IDS;
+    gwOptions.max_active = DEFAULT_MAX_ACTIVE;
+    gwOptions.service_centre[0] = 0;
+    gwOptions.log_path[0] = 0;
+    gwOptions.gtt_table_size = 0;
+    gwOptions.MAP_timeout= 5;
+    gwOptions.IP_port = 5100;
+    gwOptions.allowed_clients_num = 0;
+    gwOptions.max_connections = 10;
+    gwOptions.queue_check_period = 10;
+}
+
 
 int read_option(char* inistr,char* addinfo)
 {
@@ -186,23 +194,6 @@ int read_option(char* inistr,char* addinfo)
           sprintf(addinfo,"IMSI prefix too long. It should not exceed 15 digits.");
           return(INI_FILE_RANGE_ERR);
       }
-//      if(p==(char*)option_value) {
-//          sprintf(addinfo,"IMSI mask cannot start from delimiter");
-//          return(INI_FILE_RANGE_ERR);
-//      }
-//      else {
-//          p=strchr(p+1,'/');
-//          if(p) {
-//              sprintf(addinfo,"Only one delimiter is allowed at IMSI mask");
-//              return(INI_FILE_RANGE_ERR);
-//          }
-//      }
-//      p=strrchr(option_value,'/');
-//      if(p==(char*)option_value[strlen(option_value-1)]) {
-//          sprintf(addinfo,"IMSI mask cannot end with delimiter");
-//          return(INI_FILE_RANGE_ERR);
-//      }
-
 
       strcpy(gttTable[gwOptions.gtt_table_size].imsi_prefix,option_value);
       inistr += pos+pos2;
@@ -471,14 +462,15 @@ int read_option(char* inistr,char* addinfo)
  * writes the parameter index which caused the failure
  * to the variable arg_index.
  */
-int read_initial_settings(char* ini_file_name,char* error_str)
+int read_initial_settings(char* ini_file_name, char* error_str)
 {
   int error;
   char inistr[1024];
   char* p;
   char addinfo[1024];
 
-  try {
+  SetDefaultOptions();
+
   FILE* fSettings = fopen ( ini_file_name, "rt" );
   if(!fSettings)
       return UNABLE_TO_OPEN_INI_FILE;
@@ -494,19 +486,14 @@ int read_initial_settings(char* ini_file_name,char* error_str)
       }
     if ((error = read_option(p,addinfo)) != 0)
     {
-        strcpy(error_str,p);
+        strcpy(error_str, p);
         if(strlen(addinfo))
-            strcat(error_str,addinfo);
+            strcat(error_str, addinfo);
         return(error);
     }
   }
   fclose(fSettings);
   return(0);
-  }
-  catch(...) {
-      log("Exception caught in read_initial_settings");
-      return -999;
-  }
 }
 
 const char* IPAddr2Text(in_addr* pinAddr,char* buffer,int buf_size)
@@ -518,6 +505,9 @@ const char* IPAddr2Text(in_addr* pinAddr,char* buffer,int buf_size)
     return inet_ntop(AF_INET,(const void*)pinAddr,buffer,buf_size);
 #endif
 }
+
+
+
 
 
 int Create_Request(int PS_req_num,char* imsi,int triplets_num,int socket_index)
@@ -647,7 +637,7 @@ void Send_Response_to_Client(int dlg_id)
     }
 }
 
-/* This function is called from MTU_smac when close indication arrives and dialoguse is finished */
+/* This function is called from MTU_smac when close indication arrives and dialogue is finished */
 void OnDialogueFinish(u16 dlg_id)
 {
     try {
@@ -700,10 +690,11 @@ int ProcessRequest(int conn_index,int buffer_shift) {
     //SPSRequest *pspRequest=(SPSRequest *)socket_recv_buffer;
 
     mmRequest.clear();
-    pspRequest.Parse((SPSRequest *)(socket_recv_buffer+buffer_shift), sizeof(socket_recv_buffer), ui32ReqNum,ui16ReqType,ui16PackLen,mmRequest, 1);
+    pspRequest.Parse((SPSRequest *)(socket_recv_buffer+buffer_shift), sizeof(socket_recv_buffer),
+                      ui32ReqNum,ui16ReqType,ui16PackLen,mmRequest, 1);
     if(ui16ReqType==SS7GW_IMSI_REQ) {
       // Request for IMSI triplets
-      if(!bShutdownInProgress)
+      if(!bShutdownInProgress) {
         do {
           std::multimap<__uint16_t,SPSReqAttr*>::iterator iter=mmRequest.find(SS7GW_IMSI);
           if(iter==mmRequest.end()) {
@@ -746,6 +737,7 @@ int ProcessRequest(int conn_index,int buffer_shift) {
           bRequestAccept=true;
          }
          while(0);
+      }
        else {
          // Shutdown in progress, no new requests accepted
          bRequestAccept=false;
@@ -780,7 +772,7 @@ int ProcessRequest(int conn_index,int buffer_shift) {
             return ui16PackLen;
 
         // request accepted
-        if(!preset_mode) {
+        if(!emulation_mode) {
             if (MTU_open_dlg(nDialogueID,imsi) != 0) {
               ss7RequestMap.at(nDialogueID).state = rs_finished;
               Send_Response_to_Client(nDialogueID);
@@ -791,7 +783,7 @@ int ProcessRequest(int conn_index,int buffer_shift) {
             time(&ss7RequestMap.at(nDialogueID).state_change_time);
         }
         else {
-            // preset mode - used when SS7 link is down
+            // emaulation mode - used when SS7 link is down
             strcpy(ss7RequestMap.at(nDialogueID).rand[0],"e6486dcc5ebc94e3c989a97bd0909f2a");
             strcpy(ss7RequestMap.at(nDialogueID).rand[1],"1b5366727f83d8029db95b0eb2a22f02");
             strcpy(ss7RequestMap.at(nDialogueID).rand[2],"e9e41353b37341ee63f38b7c5a41efef");
@@ -818,8 +810,50 @@ int ProcessRequest(int conn_index,int buffer_shift) {
 }
 
 
+
+
+void ProcessPendingSS7Messages()
+{
+    HDR *h;               /* header of received message */
+    MSG *m;               /* received message */
+    try {
+        while ((h = GCT_grab(gwOptions.mtu_mod_id)) != 0) {
+            // While we have SS7 messages, process them
+            m = (MSG *)h;
+            switch (m->hdr.type)
+            {
+              case MAP_MSG_DLG_IND:
+              case MAP_MSG_SRV_IND:
+                if (gwOptions.log_options & MTU_TRACE_RX)
+                  MTU_display_recvd_msg(m);
+                MTU_smac(m);
+                break;
+
+              default:
+                /*
+                 * Under normal operation we don't expect to receive anything
+                 * else but if we do report the messages.
+                 */
+                if (gwOptions.log_options & MTU_TRACE_RX)
+                  MTU_display_recvd_msg(m);
+                MTU_disp_err(((HDR *)m)->id,"Unexpected message type");
+                break;
+            }
+            /*
+             * Once we have finished processing the message
+             * it must be released to the pool of messages.
+             */
+            relm(h);
+        }
+    }
+    catch(...) {
+        log("Exception caught while processing SS7 messages loop");
+    }
+}
+
+
 // Function CheckRequestQueue checks request queue for hanging dialogues and releases it
-void CheckRequestQueue(time_t tNow)
+void DiscardHangingRequests(time_t tNow)
 {
     bool bTimeoutReqFound=false;
 
@@ -837,11 +871,61 @@ void CheckRequestQueue(time_t tNow)
 
     }
     if(bTimeoutReqFound)
-        log("Queue size after checking request queue=%d",ss7RequestMap.size());
+        log("Queue size after discarding hanging requests: %d", ss7RequestMap.size());
     }
     catch(...) {
-        log("Exception caught in CheckRequestQueue");
+        log("Exception caught in DiscardHangingRequests");
     }
+}
+
+
+void DiscardHangingRequestsSchedule()
+{
+    static time_t lastQueueCheckTime = time(NULL); // initialise last queue check time
+    time_t now;
+    time(&now);
+    if(now - lastQueueCheckTime > gwOptions.queue_check_period) {
+        log("DiscardHangingRequests called... ");
+        DiscardHangingRequests(now);
+        time(&lastQueueCheckTime);
+    }
+}
+
+bool IsShutdownSignalSet()
+{
+    const char* stopFilename = "EAP-SIM-GW.stop";
+    FILE* stopFile;
+    if((stopFile = fopen(stopFilename, "r"))) {
+      log("Stop file found. Shutting gateway down ...");
+      fclose(stopFile);
+      remove(stopFilename);
+      return true;
+    }
+    else {
+        return false;
+    }
+}
+
+void CloseSockets()
+{
+    for(int i=0; i < gwOptions.max_connections; i++) {
+        if(client_socket[i] != 0) {
+          shutdown(client_socket[i], SD_BOTH);
+        #ifdef WIN32
+          closesocket(client_socket[i]);
+        #else
+          close(client_socket[i]);
+        #endif
+        }
+    }
+    free(client_socket);
+    free(client_addr);
+    // close listening socket
+  #ifdef WIN32
+    closesocket(listen_socket);
+  #else
+    close(listen_socket);
+  #endif
 }
 
 /*
@@ -851,7 +935,6 @@ int main(int argc, char* argv[])
 {
   int cli_error;
   char error_ini_string[1024];
-  int listen_socket, newsockfd;
 #ifdef WIN32
   int clilen;
 #else
@@ -870,43 +953,20 @@ int main(int argc, char* argv[])
   int nReceived;
   int nBytesProcessed;
   int nRequestLen;
-  time_t tQueueCheckTime;
-  time_t tNow;
-  char dir_slash;
-  char szStopFilename[2048];
-  FILE* fStopFile;
+
   bool bConnectionAllowed;
 
-  HDR *h;               /* header of received message */
-  MSG *m;               /* received message */
-
-  gwOptions.mtu_mod_id = DEFAULT_MODULE_ID;
-  gwOptions.mtu_map_id = DEFAULT_MAP_ID;
-  gwOptions.map_version = MTU_MAPV3; //MTU_MAPV2;
-  gwOptions.mode = MTU_SEND_AUTH_INFO;
-  gwOptions.log_options = DEFAULT_OPTIONS;
-  gwOptions.base_dlg_id = BASE_DLG_ID;
-  gwOptions.num_dlg_ids = NUM_OF_DLG_IDS;
-  gwOptions.max_active = DEFAULT_MAX_ACTIVE;
-  //cl_args.orig_address[0] = 0;
-  gwOptions.service_centre[0] = 0;
-  gwOptions.log_path[0] = 0;
-  gwOptions.gtt_table_size = 0;
-  gwOptions.MAP_timeout=5;
-  gwOptions.IP_port=5100;
-  gwOptions.allowed_clients_num=0;
-  gwOptions.max_connections=10;
-  gwOptions.queue_check_period=10;
 
 
   if(argc<2) {
-      printf("Usage: eap-sim-gw ini_file\n");
+      printf("Usage: eap-sim-gw ini_file [-debug] [-emul]\n");
       exit(1);
   }
-  if ((cli_error = read_initial_settings(argv[1],(char*)error_ini_string)) != 0)
-  {
-    switch (cli_error)
-    {
+
+
+
+  if ((cli_error = read_initial_settings(argv[1], (char*)error_ini_string)) != 0)  {
+    switch (cli_error) {
       case UNABLE_TO_OPEN_INI_FILE :
         fprintf(stderr,"%s: Unable to open ini-file %s. Exiting process.\n",program,argv[1]);
         break;
@@ -918,7 +978,7 @@ int main(int argc, char* argv[])
       case INI_FILE_RANGE_ERR :
         fprintf(stderr, "%s: Parameter range error in ini-file : %s\n", program, error_ini_string);
         break;
-    case TOO_MANY_ALLOWED_IPS :
+      case TOO_MANY_ALLOWED_IPS :
         fprintf(stderr, "%s: Too many allowed IPs given in ini file : %s\n", program, error_ini_string);
         break;
 
@@ -942,29 +1002,27 @@ int main(int argc, char* argv[])
     if(!strcmp(argv[2],"-debug") || !strcmp(argv[2],"-DEBUG"))
         debug_mode=1;
 
-    if(!strcmp(argv[2],"-preset") || !strcmp(argv[2],"-PRESET"))
-        preset_mode=1;
+    if(!strcmp(argv[2],"-emul") || !strcmp(argv[2],"-EMUL"))
+        emulation_mode=1;
   }
 
   // construct name of stop-file. It must reside in same directory as ini-file
-#ifdef WIN32
-  dir_slash='\\' ;
-#else
-  dir_slash='/';
-#endif
-  char* ds_pos=strrchr(argv[1],dir_slash);    // search for last occurence of slash in ini-file name
-  if(ds_pos) {
-      strncpy(szStopFilename,argv[1],ds_pos-argv[1]+1);
-      szStopFilename[ds_pos-argv[1]+1]=0;
-      strcat(szStopFilename,"EAP-SIM-GW.stop");
-  }
-  else
-      strcpy(szStopFilename,"EAP-SIM-GW.stop");
+//#ifdef WIN32
+//  dir_slash='\\' ;
+//#else
+//  dir_slash='/';
+//#endif
+//  char* ds_pos=strrchr(argv[1],dir_slash);    // search for last occurence of slash in ini-file name
+//  if(ds_pos) {
+//      strncpy(szStopFilename,argv[1],ds_pos-argv[1]+1);
+//      szStopFilename[ds_pos-argv[1]+1]=0;
+//      strcat(szStopFilename,"EAP-SIM-GW.stop");
+//  }
+//  else
+//      strcpy(szStopFilename,"EAP-SIM-GW.stop");
 
 
   if(!debug_mode) {
-
-
       time_t ttToday;
       tm* tmToday;
       time(&ttToday);
@@ -1030,100 +1088,40 @@ int main(int argc, char* argv[])
            exit(1);
       }
 
-      listen(listen_socket,gwOptions.max_connections);
+      listen(listen_socket, gwOptions.max_connections);
       clilen = sizeof(sockaddr_in);
 
       client_socket=(int*) malloc(100/*sizeof(int) * gwOptions.max_connections*/);
       memset(client_socket, 0, sizeof(int) * gwOptions.max_connections);
       client_addr=(sockaddr_in*)malloc(sizeof(sockaddr_in) * gwOptions.max_connections);
-      time(&tQueueCheckTime); // initialise last queue check time
+      time_t tLastQueueCheckTime;
+      time(&tLastQueueCheckTime); // initialise last queue check time
 
       // Main program loop
       while(true) {
-          try {
-          while ((h = GCT_grab(gwOptions.mtu_mod_id)) != 0)
-          {
-              // While we have SS7 messages, process them
-              m = (MSG *)h;
-              switch (m->hdr.type)
-              {
-                case MAP_MSG_DLG_IND:
-                case MAP_MSG_SRV_IND:
-                  if (gwOptions.log_options & MTU_TRACE_RX)
-                    MTU_display_recvd_msg(m);
-                  MTU_smac(m);
-                  break;
+          ProcessPendingSS7Messages();
 
-                default:
-                  /*
-                   * Under normal operation we don't expect to receive anything
-                   * else but if we do report the messages.
-                   */
-                  if (gwOptions.log_options & MTU_TRACE_RX)
-                    MTU_display_recvd_msg(m);
-                  MTU_disp_err(((HDR *)m)->id,"Unexpected message type");
-                  break;
-              }
-              /*
-               * Once we have finished processing the message
-               * it must be released to the pool of messages.
-               */
-              relm(h);
-          }
-          }
-          catch(...) {
-              log("Exception caught while processing SS7 messages loop");
-          }
+//          try {
+              // No more SS7 messages to process - check our dialogue queue
+//              time_t tNow;
+//              time(&tNow);
+//              if(tNow - tLastQueueCheckTime > gwOptions.queue_check_period) {
+//                  // once in 30 seconds check requests queue for hanging dialogues
+//                  DiscardHangingRequests(tNow);
+//                  time(&tLastQueueCheckTime);
+        DiscardHangingRequestsSchedule();
 
-          try {
-          // No more SS7 messages to process - check our dialogue queue
-          time(&tNow);
-          if(tNow - tQueueCheckTime > gwOptions.queue_check_period) {
-              // once in 30 seconds check requests queue for hanging dialogues
-              CheckRequestQueue(tNow);
-              time(&tQueueCheckTime);
-              if(!bShutdownInProgress) {
-                if((fStopFile=fopen(szStopFilename,"r"))) {
-                  bShutdownInProgress=true;
-                  log("Stop file %s found. Shutting gateway down ...",szStopFilename);
-                  fclose(fStopFile);
-                }
-              }
-              if(bShutdownInProgress && ss7RequestMap.size() == 0) {
-                // all requests are processed, close connections
-                for(i=0; i<gwOptions.max_connections; i++) {
-                    if(client_socket[i] != 0) {
-                      shutdown(newsockfd,2);
-                    #ifdef WIN32
-                      closesocket(newsockfd);
-                    #else
-                      close(newsockfd);
-                    #endif
-                    }
-                }
-                free(client_socket);
-                free(client_addr);
-                // close listening socket
-              #ifdef WIN32
-                closesocket(listen_socket);
-              #else
-                close(listen_socket);
-              #endif
+        if (!bShutdownInProgress) {
+            bShutdownInProgress = IsShutdownSignalSet();
+        }
 
-                ss7RequestMap.clear();
-
-                // delete stop file
-                remove(szStopFilename);
-                log("Gateway shutdown.");
-                fclose(fLog);
-                exit(0);
-              }
+         if(bShutdownInProgress && ss7RequestMap.size() == 0) {
+            // all requests are processed, close connections
+            CloseSockets();
+            log("Gateway shutdown.");
+            fclose(fLog);
+            exit(0);
           }
-          }
-          catch(...) {
-              log("Exception caught in main loop: checking queue");
-          }
-
 
           // Check new client connection and requests
 
@@ -1227,9 +1225,6 @@ int main(int argc, char* argv[])
                       client_socket[i]=0;
                       break;
                   }
-//                  log("%d bytes received from %d.%d.%d.%d (connection #%d). Processing request(s) ...",nReceived,
-//                         client_addr[i].sin_addr.S_un.S_un_b.s_b1,client_addr[i].sin_addr.S_un.S_un_b.s_b2,
-//                         client_addr[i].sin_addr.S_un.S_un_b.s_b3,client_addr[i].sin_addr.S_un.S_un_b.s_b4,i);
                   log("%d bytes received from %s (connection #%d). Processing request(s) ...",nReceived,
                       IPAddr2Text(&client_addr[i].sin_addr,address_buffer,sizeof(address_buffer)),i);
                   nBytesProcessed = 0;
@@ -1251,13 +1246,6 @@ int main(int argc, char* argv[])
           }
     }
 
-//#ifdef WIN32
-//      closesocket( newsockfd );
-//      closesocket( listen_socket );
-//      WSACleanup();
-//#else
-//      close(sock);
-//#endif
 
 }
   else {
@@ -1343,7 +1331,3 @@ int main(int argc, char* argv[])
   return(0);
 }
 
-
-/*
- *        show_syntax()
- */
