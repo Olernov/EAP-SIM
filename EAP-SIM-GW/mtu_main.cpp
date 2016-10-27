@@ -32,6 +32,8 @@
 #define DEFAULT_OPTIONS         (0x000f)
 #define DEFAULT_MAX_ACTIVE      (0)
 #define DEFAULT_TRIPLETS_NUM    (3)
+#define NO_FREE_CONNECTIONS     (-1)
+#define FREE_SOCKET             (0)
 
 #ifdef WIN32
     #define SOCK_ERR WSAGetLastError()
@@ -885,7 +887,6 @@ void DiscardHangingRequestsSchedule()
     time_t now;
     time(&now);
     if(now - lastQueueCheckTime > gwOptions.queue_check_period) {
-        log("DiscardHangingRequests called... ");
         DiscardHangingRequests(now);
         time(&lastQueueCheckTime);
     }
@@ -906,26 +907,83 @@ bool IsShutdownSignalSet()
     }
 }
 
+void CloseSocket(int socket)
+{
+    #ifdef WIN32
+        shutdown(socket, SD_BOTH);
+        closesocket(socket);
+    #else
+        shutdown(socket, SHUT_RDWR);
+        close(socket);
+    #endif
+}
+
 void CloseSockets()
 {
     for(int i=0; i < gwOptions.max_connections; i++) {
         if(client_socket[i] != 0) {
-          shutdown(client_socket[i], SD_BOTH);
-        #ifdef WIN32
-          closesocket(client_socket[i]);
-        #else
-          close(client_socket[i]);
-        #endif
+            CloseSocket(client_socket[i]);
         }
     }
     free(client_socket);
     free(client_addr);
-    // close listening socket
-  #ifdef WIN32
-    closesocket(listen_socket);
-  #else
-    close(listen_socket);
-  #endif
+    CloseSocket(listen_socket);
+}
+
+bool ProcessIncomingConnection()
+{
+    #ifdef WIN32
+      int clilen;
+    #else
+      socklen_t clilen;
+    #endif
+    struct sockaddr_in newclient_addr;
+    char address_buffer[64];
+    clilen = sizeof(newclient_addr);
+    int newsockfd = accept(listen_socket, (struct sockaddr *)&newclient_addr, &clilen);
+    if (newsockfd < 0) {
+       log("Failed to call accept on socket: %d", SOCK_ERR);
+       return false;
+    }
+
+    log("Incoming connection from %s",IPAddr2Text(&newclient_addr.sin_addr, address_buffer, sizeof(address_buffer)));
+
+    int freeSocketIndex = NO_FREE_CONNECTIONS;
+    for(int i=0; i < gwOptions.max_connections; i++) {
+        if(client_socket[i] == 0) {
+            freeSocketIndex = i;
+            break;
+        }
+    }
+    if (freeSocketIndex == NO_FREE_CONNECTIONS || bShutdownInProgress) {
+        if(freeSocketIndex == NO_FREE_CONNECTIONS) {
+            log("Maximum allowed connections reached. Rejecting connection...");
+        }
+        else {
+            log("Shutdown in progress. Rejecting connection...");
+        }
+        CloseSocket(newsockfd);
+        return false;
+    }
+    if(gwOptions.allowed_clients_num > 0) {
+        bool bConnectionAllowed = false;
+        // check connection for white list of allowed clients
+        for(int j=0; j < gwOptions.allowed_clients_num; j++)
+            if(!strcmp(gwOptions.allowed_IP[j], address_buffer)) {
+                bConnectionAllowed=true;
+                break;
+            }
+        if(!bConnectionAllowed) {
+            log("Client address %s not found in white list of allowed IPs. Rejecting connection...",address_buffer);
+            CloseSocket(newsockfd);
+            return false;
+        }
+    }
+
+    client_socket[freeSocketIndex] = newsockfd;
+    memcpy(&client_addr[freeSocketIndex], &newclient_addr, sizeof(newclient_addr));
+    log("Connection #%d accepted.", freeSocketIndex);
+    return true;
 }
 
 /*
@@ -935,26 +993,16 @@ int main(int argc, char* argv[])
 {
   int cli_error;
   char error_ini_string[1024];
-#ifdef WIN32
-  int clilen;
-#else
-  socklen_t clilen;
-#endif
-  struct sockaddr_in serv_addr;
-  struct sockaddr_in newclient_addr;
-  char address_buffer[64];
-  fd_set read_set, write_set;
-  struct timeval tv;
-  int  i,res,max_socket;
+
+//  struct timeval tv;
   u32  temp_u32;
   char imsi[20];
   int triplets_num;
   int nDialogueID;
-  int nReceived;
   int nBytesProcessed;
   int nRequestLen;
 
-  bool bConnectionAllowed;
+  //bool bConnectionAllowed;
 
 
 
@@ -989,9 +1037,6 @@ int main(int argc, char* argv[])
     exit(1);
   }
 
-  /*
-   * Check the ini file arguments
-   */
   if (strlen(gwOptions.service_centre) == 0)
   {
     fprintf(stderr, "%s: SERVICE_CENTRE option missing in ini-file\n", program);
@@ -1005,22 +1050,6 @@ int main(int argc, char* argv[])
     if(!strcmp(argv[2],"-emul") || !strcmp(argv[2],"-EMUL"))
         emulation_mode=1;
   }
-
-  // construct name of stop-file. It must reside in same directory as ini-file
-//#ifdef WIN32
-//  dir_slash='\\' ;
-//#else
-//  dir_slash='/';
-//#endif
-//  char* ds_pos=strrchr(argv[1],dir_slash);    // search for last occurence of slash in ini-file name
-//  if(ds_pos) {
-//      strncpy(szStopFilename,argv[1],ds_pos-argv[1]+1);
-//      szStopFilename[ds_pos-argv[1]+1]=0;
-//      strcat(szStopFilename,"EAP-SIM-GW.stop");
-//  }
-//  else
-//      strcpy(szStopFilename,"EAP-SIM-GW.stop");
-
 
   if(!debug_mode) {
       time_t ttToday;
@@ -1074,7 +1103,7 @@ int main(int argc, char* argv[])
           exit(1);
       }
       /* Initialize socket structure */
-
+      struct sockaddr_in serv_addr;
       memset((char *) &serv_addr, 0, sizeof(serv_addr));
       serv_addr.sin_family = AF_INET;
       serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -1089,7 +1118,7 @@ int main(int argc, char* argv[])
       }
 
       listen(listen_socket, gwOptions.max_connections);
-      clilen = sizeof(sockaddr_in);
+      //clilen = sizeof(sockaddr_in);
 
       client_socket=(int*) malloc(100/*sizeof(int) * gwOptions.max_connections*/);
       memset(client_socket, 0, sizeof(int) * gwOptions.max_connections);
@@ -1124,107 +1153,46 @@ int main(int argc, char* argv[])
           }
 
           // Check new client connection and requests
-
           try {
+          struct timeval tv;
           tv.tv_sec = 0;  // time-out
           tv.tv_usec = 100;
+          fd_set read_set, write_set;
           FD_ZERO( &read_set );
           FD_ZERO( &write_set );
           FD_SET( listen_socket, &read_set );
-          max_socket=listen_socket;
-          for(i=0; i<gwOptions.max_connections; i++) {
-              if(client_socket[i] != 0) {
+          int max_socket = listen_socket;
+          for(int i = 0; i < gwOptions.max_connections; i++) {
+              if(client_socket[i] != FREE_SOCKET) {
                   FD_SET( client_socket[i], &read_set );
                   if(client_socket[i] > max_socket)
                       max_socket=client_socket[i];
               }
           }
-
-          if ( (res=select( max_socket + 1, &read_set, &write_set, NULL, &tv )) !=0  )
-          {
-              if(res==-1) {
-                  fprintf(stderr, "%s: select returned error: %d\n" ,program,SOCK_ERR);
+          int res;
+          if ( (res = select( max_socket + 1, &read_set, &write_set, NULL, &tv )) !=0) {
+              if(res == -1) {
+                  log("select function returned error: %d", SOCK_ERR);
                   sleep(10); // not to overflow log files and stderr
                   continue;
               }
 
-              if(FD_ISSET(listen_socket,&read_set)) {
-                // check for free connections
-
-
-                newsockfd = accept(listen_socket, (struct sockaddr *)&newclient_addr,&clilen);
-                if (newsockfd < 0)
-                {
-                   log("Failed to call accept on socket: %d",SOCK_ERR);
-                   fprintf(stderr, "%s: Failed to call accept on socket: %d\n",program,SOCK_ERR);
-                   continue;
-                }
-
-                log("Incoming connection from %s",IPAddr2Text(&newclient_addr.sin_addr,address_buffer,sizeof(address_buffer)));
-
-                for(i=0; i<gwOptions.max_connections; i++) {
-                    if(client_socket[i]==0)
-                        break;
-                }
-                if (i>=gwOptions.max_connections || bShutdownInProgress) {
-                    // no new connections available
-                    if(i>=gwOptions.max_connections)
-                        log("Maximum allowed connections reached. Rejecting connection...");
-                    else
-                        log("Shutdown in progress. Rejecting connection...");
-                    shutdown(newsockfd,2);
-                    #ifdef WIN32
-                      closesocket(newsockfd);
-                    #else
-                      close(newsockfd);
-                    #endif
-                    continue;
-                }
-                if(gwOptions.allowed_clients_num > 0) {
-                    bConnectionAllowed=false;
-                    // check connection for white list of allowed clients
-                    for(int j=0; j<gwOptions.allowed_clients_num; j++)
-                        if(!strcmp(gwOptions.allowed_IP[j],address_buffer)) {
-                            bConnectionAllowed=true;
-                            break;
-                        }
-                    if(!bConnectionAllowed) {
-                        log("Client address %s not found in white list of allowed IPs. Rejecting connection...",address_buffer);
-                        shutdown(newsockfd,2);
-                        #ifdef WIN32
-                          closesocket(newsockfd);
-                        #else
-                          close(newsockfd);
-                        #endif
-                        continue;
-                    }
-                }
-
-
-                client_socket[i]=newsockfd;
-                memcpy(&client_addr[i],&newclient_addr,sizeof(newclient_addr));
-
-                log("Connection #%d accepted.",i);
-                continue;
-
+              if(FD_ISSET(listen_socket, &read_set)) {
+                  ProcessIncomingConnection();
               }
 
-              for(i=0;i<gwOptions.max_connections;i++) {
-                if(FD_ISSET(client_socket[i],&read_set)) {
+              for(int i=0; i<gwOptions.max_connections; i++) {
+                if(FD_ISSET(client_socket[i], &read_set)) {
 
-                  nReceived = recv(client_socket[i], socket_recv_buffer, sizeof(socket_recv_buffer), 0);
+                  int nReceived = recv(client_socket[i], socket_recv_buffer, sizeof(socket_recv_buffer), 0);
                   if(nReceived <= 0) {
                       log("Error %d receiving data on connection #%d. Closing connection..." ,SOCK_ERR,i);
                       // set socket descriptor to 0
-                      shutdown(client_socket[i],2);
-                      #ifdef WIN32
-                        closesocket(newsockfd);
-                      #else
-                        close(newsockfd);
-                      #endif
-                      client_socket[i]=0;
+                      CloseSocket(client_socket[i]);
+                      client_socket[i] = FREE_SOCKET;
                       break;
                   }
+                  char address_buffer[64];
                   log("%d bytes received from %s (connection #%d). Processing request(s) ...",nReceived,
                       IPAddr2Text(&client_addr[i].sin_addr,address_buffer,sizeof(address_buffer)),i);
                   nBytesProcessed = 0;
@@ -1272,7 +1240,7 @@ int main(int argc, char* argv[])
             // send report to Policy Server
             // .....
         }
-
+        int res;
         if ((res=MTU_open_dlg(nDialogueID,imsi)) != 0) {
             if(res==-1) {
                 ss7RequestMap.at(nDialogueID).state = rs_finished;
