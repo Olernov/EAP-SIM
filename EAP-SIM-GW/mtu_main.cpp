@@ -11,7 +11,7 @@
  */
 
 #include "mtu.h"
-#include "CoACommon.h"
+#include "PS_Common.h"
 #include "PSPacket.h"
 
 #ifdef WIN32
@@ -34,6 +34,9 @@
 #define DEFAULT_TRIPLETS_NUM    (3)
 #define NO_FREE_CONNECTIONS     (-1)
 #define FREE_SOCKET             (0)
+#define PARSE_SUCCESS           (0)
+#define PARSE_ERROR             (-1)
+#define STR_TERMINATOR          ('\0')
 
 #ifdef WIN32
     #define SOCK_ERR WSAGetLastError()
@@ -42,6 +45,11 @@
     #define SOCK_ERR errno
 #endif
 
+const int FIXED_IMSI_LEN = 15;
+const int MIN_TRIPLETS_NUM = 1;
+const int MAX_TRIPLETS_NUM = 5;
+const int MIN_QUINTUPLETS_REQUEST_NUM = 1;
+const int MAX_QUINTUPLETS_REQUEST_NUM = 5;
 
 GW_OPTIONS gwOptions;
 GTT_ENTRY gttTable[MAX_GTT_TABLE_SIZE];
@@ -63,7 +71,7 @@ int listen_socket, newsockfd;
 int emulation_mode=0;
 bool bShutdownInProgress=false;
 
-std::multimap<__uint16_t,SPSReqAttr*> mmRequest;
+
 
 char socket_recv_buffer[65536];
 char socket_send_buffer[65536];
@@ -669,107 +677,109 @@ void OnDialogueFinish(u16 dlg_id)
 }
 
 
-/* Function consistently processes requests from socket_recv_buffer.
+bool ValidateAndSetTripletRequestParams(const std::multimap<__uint16_t,SPSReqAttr*>& mmRequest,
+                                        char* imsi, int& triplets_num, char* errorDescr)
+{
+    std::multimap<__uint16_t, SPSReqAttr*>::const_iterator iter = mmRequest.find(SS7GW_IMSI);
+    if(iter == mmRequest.end()) {
+        sprintf(errorDescr, "IMSI is not given in triplets request");
+        return false;
+    }
+    strncpy(imsi, reinterpret_cast<char*>(iter->second) + sizeof(SPSReqAttr), FIXED_IMSI_LEN);
+    imsi[ntohs(iter->second->m_usAttrLen) - sizeof(SPSReqAttr)] = STR_TERMINATOR;
+    if(ntohs(iter->second->m_usAttrLen) - sizeof(SPSReqAttr) != FIXED_IMSI_LEN) {
+        sprintf(errorDescr,"Wrong IMSI %s given. IMSI must be %â symbols long.", imsi, FIXED_IMSI_LEN);
+        return false;
+    }
+
+    iter = mmRequest.find(SS7GW_TRIP_NUM);
+    if(iter != mmRequest.end()) {
+        char attr_value[256];
+        strncpy(attr_value, reinterpret_cast<char*>(iter->second) + sizeof(SPSReqAttr),
+                ntohs(iter->second->m_usAttrLen) - sizeof(SPSReqAttr) );
+        attr_value[ntohs(iter->second->m_usAttrLen) - sizeof(SPSReqAttr)] = STR_TERMINATOR;
+        u32  temp_u32;
+        if (strtou32(&temp_u32, attr_value) != 0) {
+            sprintf(errorDescr,"Wrong number of triplets given (%s)", attr_value);
+            return false;
+        }
+        triplets_num = (u16)temp_u32;
+        if(triplets_num < MIN_TRIPLETS_NUM || triplets_num > MAX_TRIPLETS_NUM) {
+          sprintf(errorDescr,"Number of triplets must be from %d to %d. Given value=%d",
+                   MIN_TRIPLETS_NUM, MAX_TRIPLETS_NUM, triplets_num);
+          return false;
+        }
+    }
+    else {
+        triplets_num = DEFAULT_TRIPLETS_NUM;  // by default request AuC for 3 triplets
+    }
+    return true;
+}
+
+
+/* Function processes next request from socket_recv_buffer.
  * buffer_shift - starting point of next request in buffer.
- * Return value is the length of processed request.
+ * Returned value is the length of processed request.
  */
-int ProcessRequest(int conn_index,int buffer_shift) {
-    char szError[2048];
+int ProcessNextRequestFromBuffer(int conn_index,int buffer_shift) {
+    char errorDescr[2048];
     u32  temp_u32;
     char attr_value[256];
     char imsi[20];
     int nDialogueID;
-    bool bRequestAccept=false;
     int triplets_num=0;
     __uint32_t ui32ReqNum;
     __uint16_t ui16ReqType;
     __uint16_t ui16PackLen;
+    const int VALIDATE_PACKET = 1;
 
-    try {
-    imsi[0]=0;
-    //SPSRequest *pspRequest=(SPSRequest *)socket_recv_buffer;
+    imsi[0] = '\0';
+    std::multimap<__uint16_t, SPSReqAttr*> mmRequest;
+    int parseRes = pspRequest.Parse((SPSRequest *)(socket_recv_buffer+buffer_shift), sizeof(socket_recv_buffer),
+                      ui32ReqNum, ui16ReqType, ui16PackLen, mmRequest, VALIDATE_PACKET);
+    if (parseRes != PARSE_SUCCESS) {
+        log("Unable to parse incoming packet");
+        return PARSE_ERROR;
+    }
 
-    mmRequest.clear();
-    pspRequest.Parse((SPSRequest *)(socket_recv_buffer+buffer_shift), sizeof(socket_recv_buffer),
-                      ui32ReqNum,ui16ReqType,ui16PackLen,mmRequest, 1);
-    if(ui16ReqType==SS7GW_IMSI_REQ) {
-      // Request for IMSI triplets
-      if(!bShutdownInProgress) {
-        do {
-          std::multimap<__uint16_t,SPSReqAttr*>::iterator iter=mmRequest.find(SS7GW_IMSI);
-          if(iter==mmRequest.end()) {
-              sprintf(szError,"IMSI is not given in triplets request");
-              break;
+    if(ui16ReqType==SS7GW_IMSI_REQ) {  // Request for triplets
+        bool bRequestAccepted = false;
+        if (ValidateAndSetTripletRequestParams(mmRequest, imsi, triplets_num, errorDescr)) {
+          if((nDialogueID = Create_Request(ui32ReqNum, imsi, triplets_num, conn_index))<0) {
+              sprintf(errorDescr, "All SS7 dialogues are busy, request rejected. Queue size=%d", ss7RequestMap.size());
           }
-          strncpy(imsi,reinterpret_cast<char*>(iter->second)+4,15);
-          imsi[ntohs(iter->second->m_usAttrLen)-4]=0;
-          if(ntohs(iter->second->m_usAttrLen)-4 != 15) {
-              sprintf(szError,"Wrong IMSI=%s given. IMSI must be 15 symbols long.",imsi);
-              break;
-          }
-
-          iter=mmRequest.find(SS7GW_TRIP_NUM);
-          if(iter!=mmRequest.end()) {
-              strncpy(attr_value,reinterpret_cast<char*>(iter->second)+4,ntohs(iter->second->m_usAttrLen)-4 );
-              attr_value[ntohs(iter->second->m_usAttrLen)-4]=0;
-              if (strtou32(&temp_u32, attr_value) != 0) {
-                  sprintf(szError,"Wrong number of triplets given (%s)",attr_value);
-                  break;
-              }
-              triplets_num=(u16)temp_u32;
-              if(triplets_num<1 ||triplets_num>5) {
-                sprintf(szError,"Number of triplets must be from 1 to 5. Given value=%d",triplets_num);
-                break;
-              }
-
-          }
-          else {
-              triplets_num=DEFAULT_TRIPLETS_NUM;  // by default request AuC for 3 triplets
-          }
-
-          if((nDialogueID=Create_Request(ui32ReqNum,imsi,triplets_num,conn_index))<0) {
-              sprintf(szError, "All SS7 dialogues are busy, request rejected. Queue size=%d",ss7RequestMap.size());
-              break;
-          }
+          bRequestAccepted = true;
           log("Request #%d, dialogue_id 0x%04x allocated. IMSI %s, triplets requested %d. Queue size=%d",
                  ui32ReqNum,nDialogueID,imsi,triplets_num,ss7RequestMap.size());
-
-          bRequestAccept=true;
-         }
-         while(0);
-      }
-       else {
-         // Shutdown in progress, no new requests accepted
-         bRequestAccept=false;
-         strcpy(szError,"Shutdown in progress. Unable to accept new requests.");
-       }
+        }
 
         // send response to client
-        if(pspResponse.Init((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),ui32ReqNum,SS7GW_IMSI_RESP)) {
+        if(pspResponse.Init((SPSRequest*)socket_send_buffer, sizeof(socket_send_buffer), ui32ReqNum, SS7GW_IMSI_RESP)) {
             // error - buffer too small
             log("Initializing response buffer failed, buffer too small" );
-            fprintf(stderr, "%s: Initializing response buffer failed, buffer too small\n",program );
+            fprintf(stderr, "%s: Initializing response buffer failed, buffer too small\n", program);
             return ui16PackLen;
         }
-        if(bRequestAccept) {
+        if(bRequestAccepted) {
             // request accepted, send confirmation to client
             log("Request #%d for IMSI %s and triplet num %d accepted.",ui32ReqNum,imsi,triplets_num);
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_RESULT,"00",2);
         }
         else {
             // error in request parameters
-            log("Request #%d for IMSI %s and triplet num %d rejected with reason %s",ui32ReqNum,imsi,triplets_num,szError);
+            log("Request #%d for IMSI %s and triplet num %d rejected with reason %s",ui32ReqNum,imsi,triplets_num,errorDescr);
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_RESULT,"01",2);
-            pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_DESCR,szError,strlen(szError));
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_DESCR,errorDescr,strlen(errorDescr));
         }
 
         if(!send(client_socket[conn_index],socket_send_buffer,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),0)) {
             // sending response failed
-          log("Sending request accept confirmation to client failed: %d",SOCK_ERR );
+          log("Sending request accept confirmation to client failed: %d", SOCK_ERR );
         }
 
-        if(!bRequestAccept)
+        if(!bRequestAccepted) {
             return ui16PackLen;
+        }
 
         // request accepted
         if(!emulation_mode) {
@@ -783,7 +793,7 @@ int ProcessRequest(int conn_index,int buffer_shift) {
             time(&ss7RequestMap.at(nDialogueID).state_change_time);
         }
         else {
-            // emaulation mode - used when SS7 link is down
+            // emulation mode - used when SS7 link is down
             strcpy(ss7RequestMap.at(nDialogueID).rand[0],"e6486dcc5ebc94e3c989a97bd0909f2a");
             strcpy(ss7RequestMap.at(nDialogueID).rand[1],"1b5366727f83d8029db95b0eb2a22f02");
             strcpy(ss7RequestMap.at(nDialogueID).rand[2],"e9e41353b37341ee63f38b7c5a41efef");
@@ -802,11 +812,6 @@ int ProcessRequest(int conn_index,int buffer_shift) {
         }
     }
     return ui16PackLen;
-    }
-    catch(...) {
-        log("Exception caught in ProcessRequest");
-        return -999;
-    }
 }
 
 
@@ -984,6 +989,26 @@ bool ProcessIncomingConnection()
     return true;
 }
 
+bool ProcessIncomingData(int sockIndex)
+{
+    int nReceived = recv(client_socket[sockIndex], socket_recv_buffer, sizeof(socket_recv_buffer), 0);
+    if(nReceived <= 0) {
+        return false;
+    }
+    char address_buffer[64];
+    log("%d bytes received from %s (connection #%d). Processing request(s) ...", nReceived,
+        IPAddr2Text(&client_addr[sockIndex].sin_addr, address_buffer, sizeof(address_buffer)), sockIndex);
+    int nBytesProcessed = 0;
+    while(nBytesProcessed < nReceived) {
+      int nRequestLen = ProcessNextRequestFromBuffer(sockIndex, nBytesProcessed);
+      if(nRequestLen >= 0)
+          nBytesProcessed += nRequestLen;
+      else
+          break;
+    }
+    return true;
+}
+
 
 bool ProcessSocketEvents()
 {
@@ -1014,24 +1039,30 @@ bool ProcessSocketEvents()
         }
         for(int sockIndex=0; sockIndex < gwOptions.max_connections; sockIndex++) {
           if(FD_ISSET(client_socket[sockIndex], &read_set)) {
-            int nReceived = recv(client_socket[sockIndex], socket_recv_buffer, sizeof(socket_recv_buffer), 0);
-            if(nReceived <= 0) {
-                log("Error %d receiving data on connection #%d. Closing connection..." , SOCK_ERR, sockIndex);
-                CloseSocket(client_socket[sockIndex]);
-                client_socket[sockIndex] = FREE_SOCKET;
-                continue;
-            }
-            char address_buffer[64];
-            log("%d bytes received from %s (connection #%d). Processing request(s) ...",nReceived,
-                IPAddr2Text(&client_addr[sockIndex].sin_addr, address_buffer, sizeof(address_buffer)), sockIndex);
-            int nBytesProcessed = 0;
-            while(nBytesProcessed < nReceived) {
-              int nRequestLen = ProcessRequest(sockIndex, nBytesProcessed);
-              if(nRequestLen >= 0)
-                  nBytesProcessed += nRequestLen;
-              else
-                  break;
-            }
+              if (!ProcessIncomingData(sockIndex)) {
+                  log("Error %d receiving data on connection #%d. Closing connection..." , SOCK_ERR, sockIndex);
+                  CloseSocket(client_socket[sockIndex]);
+                  client_socket[sockIndex] = FREE_SOCKET;
+                  continue;
+              }
+//            int nReceived = recv(client_socket[sockIndex], socket_recv_buffer, sizeof(socket_recv_buffer), 0);
+//            if(nReceived <= 0) {
+//                log("Error %d receiving data on connection #%d. Closing connection..." , SOCK_ERR, sockIndex);
+//                CloseSocket(client_socket[sockIndex]);
+//                client_socket[sockIndex] = FREE_SOCKET;
+//                continue;
+//            }
+//            char address_buffer[64];
+//            log("%d bytes received from %s (connection #%d). Processing request(s) ...",nReceived,
+//                IPAddr2Text(&client_addr[sockIndex].sin_addr, address_buffer, sizeof(address_buffer)), sockIndex);
+//            int nBytesProcessed = 0;
+//            while(nBytesProcessed < nReceived) {
+//              int nRequestLen = ProcessRequest(sockIndex, nBytesProcessed);
+//              if(nRequestLen >= 0)
+//                  nBytesProcessed += nRequestLen;
+//              else
+//                  break;
+//            }
           }
        }
     }
