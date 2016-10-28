@@ -240,8 +240,8 @@ typedef struct
 typedef struct
 {
   u8 pi[PI_BYTES];              /* Bit field indicating parameters present */
-  u16 dlg_id;                   /* dialogue ID */
-  u8 invoke_id;                 /* invoke ID */
+  u16 ss7dialogueID;                   /* dialogue ID */
+  u8 ss7invokeID;                 /* invoke ID */
   u8 type;                      /* primitive type */
   u8 dlg_prim;                  /* indicates this is a dialogue primitive */
   u16 timeout;                  /* operaton timeout */
@@ -275,11 +275,18 @@ typedef struct
  */
 typedef struct
 {
-  u8 invoke_id;                 /* Invoke ID for service request */
+  u8 ss7invokeID;                 /* Invoke ID for service request */
   u8 state;                     /* state machine state */
   u8 service;                   /* service used in this dialogue */
   MTU_BCDSTR imsi;              /* IMSI */
 } MTU_DLG;
+
+
+enum REQUEST_TYPE {
+    tripletRequest,
+    quintupletRequest
+} ;
+
 
 enum REQUEST_STATE {
     rs_idle,
@@ -292,16 +299,18 @@ enum REQUEST_STATE {
 
 typedef struct
 {
-    u16 PS_request_num;         /* Policy server request num */
-    char imsi[30];                   /* international mobile subscriber ID */
-    MTU_BCDSTR bcd_imsi;
-    u8 triplets_num_req;            /*number of triplets requested*/
-    u8 triplets_num_recv;           /*number of triplets received*/
-    int socket_index;
-    u16 dlg_id;
-    u8 invoke_id;                 /* Invoke ID for service request */
+    REQUEST_TYPE request_type;
+    u16 clientRequestNum;
+    u32 gatewayRequestNum;
+    char imsi[30];
+    MTU_BCDSTR bcdIMSI;
+    u8 requestedVectorsNum;            /*number of triplets requested*/
+    u8 receivedVectorsNum;           /*number of triplets received*/
+    int sockIndex;
+    u16 ss7dialogueID;
+    u8 ss7invokeID;                 /* Invoke ID for service request */
     REQUEST_STATE state;
-    time_t state_change_time;
+    time_t stateChangeTime;
     char rand[5][33];
     char sres[5][9];
     char kc[5][17];
@@ -330,9 +339,9 @@ typedef struct
 /*
  * Function prototypes
  */
-int mtu_ent(char*,u16 dlg_id);
-int MTU_disp_err(u16 dlg_id, const char *text);
-int MTU_disp_err_val(u16 dlg_id,const char *text, u16 value, const char* descr);
+int mtu_ent(char*,u16 ss7dialogueID);
+int MTU_disp_err(u16 ss7dialogueID, const char *text);
+int MTU_disp_err_val(u16 ss7dialogueID,const char *text, u16 value, const char* descr);
 int MTU_dlg_req_to_msg(MSG *m, MTU_MSG *dlg_req);
 int MTU_msg_to_ind(MTU_MSG *ind, MSG *m);
 int MTU_srv_req_to_msg(MSG *m, MTU_MSG *srv_req);

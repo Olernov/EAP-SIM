@@ -234,7 +234,7 @@ int MTU_srv_req_to_msg(MSG* m, MTU_MSG* srv_req)
   {
     *pptr++ = MAPPN_invoke_id;
     *pptr++ = 1;
-    *pptr++ = srv_req->invoke_id;
+    *pptr++ = srv_req->ss7invokeID;
     mlen += 3;
   }
 
@@ -474,7 +474,7 @@ int MTU_msg_to_ind(MTU_MSG* ind, MSG* m)
   u8    pname;          /* parameter name */
 
   ret = -1;
-  ind->dlg_id = m->hdr.id;
+  ind->ss7dialogueID = m->hdr.id;
   if (m->hdr.type == MAP_MSG_DLG_IND)
     ind->dlg_prim = 1;
   else
@@ -554,11 +554,11 @@ static int MTU_recover_param(u8 pname,u8 plen,u8* pptr,MTU_MSG* ind)
         ind->imsi.num_bytes = plen;
       }
       else
-        MTU_disp_err(ind->dlg_id,"IMSI too long");
+        MTU_disp_err(ind->ss7dialogueID,"IMSI too long");
       break;
 
     case MAPPN_invoke_id:
-      ind->invoke_id = *pptr;
+      ind->ss7invokeID = *pptr;
       break;
 
     case MAPPN_prob_diag:

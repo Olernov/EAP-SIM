@@ -82,9 +82,9 @@ CPSPacket pspResponse;
 
 
 extern int MTU_smac(MSG *m);
-extern int MTU_open_dlg(u16 dlg_id,char* imsi);
+extern int MTU_open_dlg(u16 ss7dialogueID,char* imsi);
 extern int MTU_display_recvd_msg(MSG *m);
-extern int MTU_send_User_Abort(u16 dlg_id,u16 invoke_id);
+extern int MTU_send_User_Abort(u16 ss7dialogueID,u16 ss7invokeID);
 
 void log(const char* szFormat, ...) {
     va_list pArguments;
@@ -516,16 +516,12 @@ const char* IPAddr2Text(in_addr* pinAddr,char* buffer,int buf_size)
 }
 
 
-
-
-
-int Create_Request(int PS_req_num,char* imsi,int triplets_num,int socket_index)
+int AddNewRequestToQueue(REQUEST_TYPE requestType, int clientRequestNum, int gatewayRequestNum, char* imsi, int requestedVectorsNum, int sockIndex)
 {
     SS7_REQUEST ss7Request;
-    u16 dlg_id=gwOptions.base_dlg_id;
+    u16 dlg_id = gwOptions.base_dlg_id;
 
-    try {
-    std::map<u16,SS7_REQUEST>::iterator iter=ss7RequestMap.begin();
+    std::map<u16, SS7_REQUEST>::iterator iter = ss7RequestMap.begin();
     while(iter != ss7RequestMap.end()) {
         if(iter->first > dlg_id)
             break;
@@ -537,13 +533,14 @@ int Create_Request(int PS_req_num,char* imsi,int triplets_num,int socket_index)
         }
     }
 
-    ss7Request.PS_request_num=PS_req_num;
-    strcpy(ss7Request.imsi,imsi);
-    ss7Request.triplets_num_req=triplets_num;
-    ss7Request.triplets_num_recv=0;
-    ss7Request.socket_index=socket_index;
-    ss7Request.dlg_id=dlg_id;
-    ss7Request.invoke_id= 1;        // Use the same invoke_id
+    ss7Request.request_type = requestType;
+    ss7Request.clientRequestNum = clientRequestNum;
+    strcpy(ss7Request.imsi, imsi);
+    ss7Request.requestedVectorsNum = requestedVectorsNum;
+    ss7Request.receivedVectorsNum=0;
+    ss7Request.sockIndex=sockIndex;
+    ss7Request.ss7dialogueID=dlg_id;
+    ss7Request.ss7invokeID= 1;        // Use the same invoke_id
 
     ss7Request.rand[0][0]=0;
     ss7Request.rand[1][0]=0;
@@ -562,19 +559,13 @@ int Create_Request(int PS_req_num,char* imsi,int triplets_num,int socket_index)
     ss7Request.sres[4][0]=0;
     ss7Request.successful=false;
 
-    time(&ss7Request.state_change_time);
+    time(&ss7Request.stateChangeTime);
 
     ss7RequestMap.insert( std::pair<u16,SS7_REQUEST>(dlg_id,ss7Request) );
 
-//    printf("\n----- New request allocated. IMSI=%s, triplets requested=%d. SS7 dialogue ID=0x%0000x. Number of active requests=%d ----------\n",
-//           imsi,triplets_num,dlg_id,ss7RequestMap.size());
     return dlg_id;
-    }
-    catch(...) {
-        log("Exception caught in Create_Request");
-        return -999;
-    }
 }
+
 
 void Send_Response_to_Client(int dlg_id)
 {
@@ -583,7 +574,7 @@ void Send_Response_to_Client(int dlg_id)
     try {
     SS7_REQUEST& ss7Req=ss7RequestMap.at(dlg_id);
 
-    if(pspResponse.Init((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),ss7Req.PS_request_num,RS_TRIP_REQ)) {
+    if(pspResponse.Init((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),ss7Req.clientRequestNum,RS_TRIP_REQ)) {
         // error - buffer too small
         log("Send_Response_to_Client: initializing packet failed, buffer too small" );
         fprintf(stderr, "%s: Send_Response_to_Client: initializing packet failed, buffer too small\n",program );
@@ -595,45 +586,45 @@ void Send_Response_to_Client(int dlg_id)
     if(ss7Req.successful) {
         pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_RESULT,"00",2);
 
-        if(ss7Req.triplets_num_recv>0) {
+        if(ss7Req.receivedVectorsNum>0) {
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_RAND1,ss7Req.rand[0],strlen(ss7Req.rand[0]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_KC1,ss7Req.kc[0],strlen(ss7Req.kc[0]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_SRES1,ss7Req.sres[0],strlen(ss7Req.sres[0]));
         }
-        if(ss7Req.triplets_num_recv>1) {
+        if(ss7Req.receivedVectorsNum>1) {
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_RAND2,ss7Req.rand[1],strlen(ss7Req.rand[1]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_KC2,ss7Req.kc[1],strlen(ss7Req.kc[1]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_SRES2,ss7Req.sres[1],strlen(ss7Req.sres[1]));
         }
-        if(ss7Req.triplets_num_recv>2) {
+        if(ss7Req.receivedVectorsNum>2) {
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_RAND3,ss7Req.rand[2],strlen(ss7Req.rand[2]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_KC3,ss7Req.kc[2],strlen(ss7Req.kc[2]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_SRES3,ss7Req.sres[2],strlen(ss7Req.sres[2]));
         }
-        if(ss7Req.triplets_num_recv>3) {
+        if(ss7Req.receivedVectorsNum>3) {
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_RAND4,ss7Req.rand[3],strlen(ss7Req.rand[3]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_KC4,ss7Req.kc[3],strlen(ss7Req.kc[3]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_SRES4,ss7Req.sres[3],strlen(ss7Req.sres[3]));
         }
-        if(ss7Req.triplets_num_recv>4) {
+        if(ss7Req.receivedVectorsNum>4) {
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_RAND5,ss7Req.rand[4],strlen(ss7Req.rand[4]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_KC5,ss7Req.kc[4],strlen(ss7Req.kc[4]));
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_SRES5,ss7Req.sres[4],strlen(ss7Req.sres[4]));
         }
         log(">>> Request #%d SUCCESS. Dialogue_id 0x%04x, IMSI %s, triplets requested %d, triplets received %d. Sending %d bytes to %s.(connection #%d).",
-            ss7Req.PS_request_num,dlg_id,ss7Req.imsi,ss7Req.triplets_num_req,ss7Req.triplets_num_recv,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),
-            IPAddr2Text(&client_addr[ss7Req.socket_index].sin_addr,address_buffer,sizeof(address_buffer)), ss7Req.socket_index);
+            ss7Req.clientRequestNum,dlg_id,ss7Req.imsi,ss7Req.requestedVectorsNum,ss7Req.receivedVectorsNum,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),
+            IPAddr2Text(&client_addr[ss7Req.sockIndex].sin_addr,address_buffer,sizeof(address_buffer)), ss7Req.sockIndex);
     }
     else {
         pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_RESULT,"01",2);
         pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_DESCR,ss7Req.error.c_str(),ss7Req.error.length());
-        log(">>> Request #%d FAILURE: %s.",ss7Req.PS_request_num,ss7Req.error.c_str());
+        log(">>> Request #%d FAILURE: %s.",ss7Req.clientRequestNum,ss7Req.error.c_str());
         log(">>> Dialogue_id 0x%04x, IMSI %s. Sending %d bytes to %s (connection #%d).",
             dlg_id,ss7Req.imsi,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),
-            IPAddr2Text(&client_addr[ss7Req.socket_index].sin_addr,address_buffer,sizeof(address_buffer)),ss7Req.socket_index);
+            IPAddr2Text(&client_addr[ss7Req.sockIndex].sin_addr,address_buffer,sizeof(address_buffer)),ss7Req.sockIndex);
     }
 
-    if(!send(client_socket[ss7Req.socket_index],socket_send_buffer,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),0)) {
+    if(!send(client_socket[ss7Req.sockIndex],socket_send_buffer,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),0)) {
         // sending response failed
     log("sending response failed: %d",SOCK_ERR);
     fprintf(stderr, "%s: sending response failed: %d\n",program,SOCK_ERR);
@@ -650,12 +641,12 @@ void OnDialogueFinish(u16 dlg_id)
 {
     try {
     SS7_REQUEST& ss7Req=ss7RequestMap.at(dlg_id);
-    int req_num=ss7Req.PS_request_num;
+    int req_num=ss7Req.clientRequestNum;
 
-    if(ss7Req.successful && ss7Req.triplets_num_recv<ss7Req.triplets_num_req) {
+    if(ss7Req.successful && ss7Req.receivedVectorsNum<ss7Req.requestedVectorsNum) {
         // some triplets are received, but we need more of them. Initiate new SS7 requests
         log("Request #%d: Requested %d triplets but received %d only. Requesting for extra triplets...",
-            ss7Req.PS_request_num,ss7Req.triplets_num_req,ss7Req.triplets_num_recv);
+            ss7Req.clientRequestNum,ss7Req.requestedVectorsNum,ss7Req.receivedVectorsNum);
         if (MTU_open_dlg(dlg_id,ss7Req.imsi) != 0) {
             // sending new SS7 request failed
               ss7Req.state = rs_finished;
@@ -663,7 +654,7 @@ void OnDialogueFinish(u16 dlg_id)
               ss7RequestMap.erase(dlg_id);
         }
         ss7RequestMap.at(dlg_id).state = rs_wait_opn_cnf;
-        time(&ss7RequestMap.at(dlg_id).state_change_time);
+        time(&ss7RequestMap.at(dlg_id).stateChangeTime);
     }
     else {
         Send_Response_to_Client(dlg_id);
@@ -688,7 +679,7 @@ bool ValidateAndSetTripletRequestParams(const std::multimap<__uint16_t,SPSReqAtt
     strncpy(imsi, reinterpret_cast<char*>(iter->second) + sizeof(SPSReqAttr), FIXED_IMSI_LEN);
     imsi[ntohs(iter->second->m_usAttrLen) - sizeof(SPSReqAttr)] = STR_TERMINATOR;
     if(ntohs(iter->second->m_usAttrLen) - sizeof(SPSReqAttr) != FIXED_IMSI_LEN) {
-        sprintf(errorDescr,"Wrong IMSI %s given. IMSI must be %â symbols long.", imsi, FIXED_IMSI_LEN);
+        sprintf(errorDescr,"Wrong IMSI %s given. IMSI must be %d symbols long.", imsi, FIXED_IMSI_LEN);
         return false;
     }
 
@@ -721,100 +712,100 @@ bool ValidateAndSetTripletRequestParams(const std::multimap<__uint16_t,SPSReqAtt
  * buffer_shift - starting point of next request in buffer.
  * Returned value is the length of processed request.
  */
-int ProcessNextRequestFromBuffer(int conn_index,int buffer_shift) {
+int ProcessNextRequestFromBuffer(int socketIndex,int buffer_shift) {
     char errorDescr[2048];
-    u32  temp_u32;
-    char attr_value[256];
     char imsi[20];
     int nDialogueID;
     int triplets_num=0;
-    __uint32_t ui32ReqNum;
-    __uint16_t ui16ReqType;
-    __uint16_t ui16PackLen;
+    __uint32_t clientRequestNum;
+    __uint16_t requestType;
+    __uint16_t packetLen;
     const int VALIDATE_PACKET = 1;
+    static unsigned long gatewayRequestNumber = 0UL;
 
     imsi[0] = '\0';
     std::multimap<__uint16_t, SPSReqAttr*> mmRequest;
     int parseRes = pspRequest.Parse((SPSRequest *)(socket_recv_buffer+buffer_shift), sizeof(socket_recv_buffer),
-                      ui32ReqNum, ui16ReqType, ui16PackLen, mmRequest, VALIDATE_PACKET);
-    if (parseRes != PARSE_SUCCESS) {
+                      clientRequestNum, requestType, packetLen, mmRequest, VALIDATE_PACKET);
+    log("Parse result: %d", parseRes);
+    if (parseRes == PARSE_ERROR) {
         log("Unable to parse incoming packet");
         return PARSE_ERROR;
     }
 
-    if(ui16ReqType==SS7GW_IMSI_REQ) {  // Request for triplets
+    if(requestType == SS7GW_IMSI_REQ) {  // Request for triplets
         bool bRequestAccepted = false;
         if (ValidateAndSetTripletRequestParams(mmRequest, imsi, triplets_num, errorDescr)) {
-          if((nDialogueID = Create_Request(ui32ReqNum, imsi, triplets_num, conn_index))<0) {
+          if((nDialogueID = AddNewRequestToQueue(tripletRequest, clientRequestNum, gatewayRequestNumber,
+                                                 imsi, triplets_num, socketIndex)) < 0) {
               sprintf(errorDescr, "All SS7 dialogues are busy, request rejected. Queue size=%d", ss7RequestMap.size());
           }
           bRequestAccepted = true;
+          gatewayRequestNumber++;
           log("Request #%d, dialogue_id 0x%04x allocated. IMSI %s, triplets requested %d. Queue size=%d",
-                 ui32ReqNum,nDialogueID,imsi,triplets_num,ss7RequestMap.size());
+                 clientRequestNum,nDialogueID,imsi,triplets_num,ss7RequestMap.size());
         }
 
         // send response to client
-        if(pspResponse.Init((SPSRequest*)socket_send_buffer, sizeof(socket_send_buffer), ui32ReqNum, SS7GW_IMSI_RESP)) {
+        if(pspResponse.Init((SPSRequest*)socket_send_buffer, sizeof(socket_send_buffer), clientRequestNum, SS7GW_IMSI_RESP)) {
             // error - buffer too small
             log("Initializing response buffer failed, buffer too small" );
             fprintf(stderr, "%s: Initializing response buffer failed, buffer too small\n", program);
-            return ui16PackLen;
+            return packetLen;
         }
         if(bRequestAccepted) {
             // request accepted, send confirmation to client
-            log("Request #%d for IMSI %s and triplet num %d accepted.",ui32ReqNum,imsi,triplets_num);
+            log("Request #%d for IMSI %s and triplet num %d accepted.",clientRequestNum,imsi,triplets_num);
             pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_RESULT,"00",2);
         }
         else {
             // error in request parameters
-            log("Request #%d for IMSI %s and triplet num %d rejected with reason %s",ui32ReqNum,imsi,triplets_num,errorDescr);
-            pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_RESULT,"01",2);
-            pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_DESCR,errorDescr,strlen(errorDescr));
+            log("Request #%d for IMSI %s and triplet num %d rejected with reason %s", clientRequestNum,
+                imsi, triplets_num, errorDescr);
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),
+                                PS_RESULT, "01", 2);
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),
+                                PS_DESCR, errorDescr, strlen(errorDescr));
         }
 
-        if(!send(client_socket[conn_index],socket_send_buffer,ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen),0)) {
+        if(!send(client_socket[socketIndex], socket_send_buffer, ntohs(((SPSRequest*)socket_send_buffer)->m_usPackLen), 0)) {
             // sending response failed
           log("Sending request accept confirmation to client failed: %d", SOCK_ERR );
         }
 
-        if(!bRequestAccepted) {
-            return ui16PackLen;
-        }
-
-        // request accepted
-        if(!emulation_mode) {
-            if (MTU_open_dlg(nDialogueID,imsi) != 0) {
-              ss7RequestMap.at(nDialogueID).state = rs_finished;
-              Send_Response_to_Client(nDialogueID);
-              ss7RequestMap.erase(nDialogueID);
-              return ui16PackLen;
+        if(bRequestAccepted) {
+            if(!emulation_mode) {
+                if (MTU_open_dlg(nDialogueID, imsi) != 0) {
+                  ss7RequestMap.at(nDialogueID).state = rs_finished;
+                  Send_Response_to_Client(nDialogueID);
+                  ss7RequestMap.erase(nDialogueID);
+                  return packetLen;
+                }
+                ss7RequestMap.at(nDialogueID).state = rs_wait_opn_cnf;
+                time(&ss7RequestMap.at(nDialogueID).stateChangeTime);
             }
-            ss7RequestMap.at(nDialogueID).state = rs_wait_opn_cnf;
-            time(&ss7RequestMap.at(nDialogueID).state_change_time);
-        }
-        else {
-            // emulation mode - used when SS7 link is down
-            strcpy(ss7RequestMap.at(nDialogueID).rand[0],"e6486dcc5ebc94e3c989a97bd0909f2a");
-            strcpy(ss7RequestMap.at(nDialogueID).rand[1],"1b5366727f83d8029db95b0eb2a22f02");
-            strcpy(ss7RequestMap.at(nDialogueID).rand[2],"e9e41353b37341ee63f38b7c5a41efef");
-            strcpy(ss7RequestMap.at(nDialogueID).sres[0],"e61752eb");
-            strcpy(ss7RequestMap.at(nDialogueID).sres[1],"58ecd4a2");
-            strcpy(ss7RequestMap.at(nDialogueID).sres[2],"f6dbfa9b");
-            strcpy(ss7RequestMap.at(nDialogueID).kc[0],"bc1d4d2b909c1800");
-            strcpy(ss7RequestMap.at(nDialogueID).kc[1],"2562db2c4af9f000");
-            strcpy(ss7RequestMap.at(nDialogueID).kc[2],"c64cc11999b4b000");
+            else {
+                // emulation mode - used when SS7 link is down
+                strcpy(ss7RequestMap.at(nDialogueID).rand[0],"e6486dcc5ebc94e3c989a97bd0909f2a");
+                strcpy(ss7RequestMap.at(nDialogueID).rand[1],"1b5366727f83d8029db95b0eb2a22f02");
+                strcpy(ss7RequestMap.at(nDialogueID).rand[2],"e9e41353b37341ee63f38b7c5a41efef");
+                strcpy(ss7RequestMap.at(nDialogueID).sres[0],"e61752eb");
+                strcpy(ss7RequestMap.at(nDialogueID).sres[1],"58ecd4a2");
+                strcpy(ss7RequestMap.at(nDialogueID).sres[2],"f6dbfa9b");
+                strcpy(ss7RequestMap.at(nDialogueID).kc[0],"bc1d4d2b909c1800");
+                strcpy(ss7RequestMap.at(nDialogueID).kc[1],"2562db2c4af9f000");
+                strcpy(ss7RequestMap.at(nDialogueID).kc[2],"c64cc11999b4b000");
 
-            log("Preset mode: triplets filled out with constant values");
-            ss7RequestMap.at(nDialogueID).successful = true;
-            ss7RequestMap.at(nDialogueID).triplets_num_recv=ss7RequestMap.at(nDialogueID).triplets_num_req;
-            ss7RequestMap.at(nDialogueID).state = rs_finished;
-            OnDialogueFinish(nDialogueID);
+                log("Preset mode: triplets filled out with constant values");
+                ss7RequestMap.at(nDialogueID).successful = true;
+                ss7RequestMap.at(nDialogueID).receivedVectorsNum = ss7RequestMap.at(nDialogueID).requestedVectorsNum;
+                ss7RequestMap.at(nDialogueID).state = rs_finished;
+                OnDialogueFinish(nDialogueID);
+            }
         }
     }
-    return ui16PackLen;
+    return packetLen;
 }
-
-
 
 
 void ProcessPendingSS7Messages()
@@ -865,10 +856,10 @@ void DiscardHangingRequests(time_t tNow)
     try {
     std::map<u16,SS7_REQUEST>::iterator iter = ss7RequestMap.begin();
     while(iter != ss7RequestMap.end()) {
-        if(tNow - iter->second.state_change_time > gwOptions.MAP_timeout ) {
-            MTU_send_User_Abort(iter->second.dlg_id,iter->second.invoke_id);
+        if(tNow - iter->second.stateChangeTime > gwOptions.MAP_timeout ) {
+            MTU_send_User_Abort(iter->second.ss7dialogueID, iter->second.ss7invokeID);
             iter->second.error="MAP time-out";
-            OnDialogueFinish(iter++ -> second.dlg_id); // increment iter here, 'cause OnDialogueFinish call map.erase, after what iterator becomes invalid
+            OnDialogueFinish(iter++ -> second.ss7dialogueID); // increment iter here, 'cause OnDialogueFinish call map.erase, after what iterator becomes invalid
             bTimeoutReqFound=true;
          }
          else

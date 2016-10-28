@@ -261,8 +261,8 @@ static u32 mtu_dlg_count;                /* counts number of dialogues opened */
 
 extern void log(const char* szFormat, ...);
 extern int Send_Triplets_to_PS(int req_id);
-extern int Send_Response_to_Client(int dlg_id);
-extern void OnDialogueFinish(u16 dlg_id);
+extern int Send_Response_to_Client(int ss7dialogueID);
+extern void OnDialogueFinish(u16 ss7dialogueID);
 
 /* construct_GT constructs Global Title according to T-REC Q.713 requirements.
  * It is used for encoding of originating and destination addresses
@@ -703,7 +703,7 @@ int MTU_send_dlg_req(MTU_MSG* req)
   /*
    * Allocate a message (MSG) to send:
    */
-  if ((m = getm((u16)MAP_MSG_DLG_REQ, req->dlg_id, NO_RESPONSE,
+  if ((m = getm((u16)MAP_MSG_DLG_REQ, req->ss7dialogueID, NO_RESPONSE,
                                       MTU_MAX_PARAM_LEN)) != 0)
   {
     m->hdr.src = gwOptions.mtu_mod_id;
@@ -758,7 +758,7 @@ int MTU_send_srv_req(MTU_MSG* req)
   /*
    * Allocate a message (MSG) to send:
    */
-  if ((m = getm((u16)MAP_MSG_SRV_REQ, req->dlg_id, NO_RESPONSE,
+  if ((m = getm((u16)MAP_MSG_SRV_REQ, req->ss7dialogueID, NO_RESPONSE,
                                       MTU_MAX_PARAM_LEN)) != 0)
   {
     m->hdr.src = gwOptions.mtu_mod_id;
@@ -798,10 +798,10 @@ int MTU_send_close_request(u16 dlg_id)
     SS7_REQUEST& ss7Req=ss7RequestMap.at(dlg_id);
 
 
-    req.dlg_id = dlg_id;
+    req.ss7dialogueID = dlg_id;
     req.type = MAPDT_CLOSE_REQ;
     memset((void *)req.pi, 0, PI_BYTES);
-    req.invoke_id = ss7Req.invoke_id;
+    req.ss7invokeID = ss7Req.ss7invokeID;
     bit_set(req.pi, MAPPN_invoke_id);
     req.release_method = MAPRM_normal_release;
     bit_set(req.pi, MAPPN_release_method);
@@ -867,9 +867,9 @@ int MTU_send_Auth_Info_Response(u16 dlg_id,u16 invoke_id)
 
     try {
     memset((void *)req.pi, 0, PI_BYTES);
-    req.dlg_id = dlg_id;
+    req.ss7dialogueID = dlg_id;
     req.type = MAPST_SEND_AUTH_INFO_RSP;
-    req.invoke_id = invoke_id;
+    req.ss7invokeID = invoke_id;
     bit_set(req.pi, MAPPN_invoke_id);
 
     //bit_set(req.pi, MAPPN_timeout);
@@ -891,8 +891,8 @@ int MTU_send_User_Abort(u16 dlg_id,u16 invoke_id)
 
     try {
     msg.type = MAPDT_U_ABORT_REQ;
-    msg.dlg_id=dlg_id;
-    msg.invoke_id=invoke_id;
+    msg.ss7dialogueID=dlg_id;
+    msg.ss7invokeID=invoke_id;
     memset((void *)msg.pi, 0, PI_BYTES);
 
     bit_set(msg.pi, MAPPN_user_rsn);
@@ -925,10 +925,10 @@ int MTU_send_auth_info(u16 dlg_id,bool bInitial)
     SS7_REQUEST& ss7Req=ss7RequestMap.at(dlg_id);
 
     memset((void *)req.pi, 0, PI_BYTES);
-    req.dlg_id = dlg_id;
+    req.ss7dialogueID = dlg_id;
     req.type = MAPST_SEND_AUTH_INFO_REQ;
 
-    req.invoke_id = ss7Req.invoke_id;
+    req.ss7invokeID = ss7Req.ss7invokeID;
 
     bit_set(req.pi, MAPPN_invoke_id);
 
@@ -968,7 +968,7 @@ int MTU_send_auth_info(u16 dlg_id,bool bInitial)
          * Number of requested vectors
          */
         bit_set(req.pi, MAPPN_nb_req_vect);
-        req.nb_req_vect = ss7Req.triplets_num_req;
+        req.nb_req_vect = ss7Req.requestedVectorsNum;
 
 
         /*
@@ -1014,9 +1014,9 @@ int MTU_send_auth_info(u16 dlg_id,bool bInitial)
    */
    
   memset((void *)req.pi, 0, PI_BYTES);
-  req.dlg_id = dlg_id;
+  req.ss7dialogueID = dlg_id;
   req.type = MAPST_UNSTR_SS_REQ_RSP;
-  req.invoke_id = invoke_id;
+  req.ss7invokeID = invoke_id;
   bit_set(req.pi, MAPPN_invoke_id);
 
   /* 
@@ -1101,9 +1101,9 @@ int MTU_process_uss_req (u16 dlg_id,u8 invoke_id)   /* USSD */
    */
    
   memset((void *)req.pi, 0, PI_BYTES);
-  req.dlg_id = dlg_id;
+  req.ss7dialogueID = dlg_id;
   req.type = MAPST_PRO_UNSTR_SS_REQ_REQ;
-  req.invoke_id = invoke_id;
+  req.ss7invokeID = invoke_id;
   bit_set(req.pi, MAPPN_invoke_id);
 
   /* USSD coding parameter */ 
@@ -1422,7 +1422,7 @@ int MTU_open_dlg(/*u8 service, MTU_BCDSTR *imsi*/u16 dlg_id,char* imsi)
    * Open the dialogue by sending MAP-OPEN-REQ.
    */
   memset((void *)req.pi, 0, PI_BYTES);
-  req.dlg_id = dlg_id;
+  req.ss7dialogueID = dlg_id;
   req.type = MAPDT_OPEN_REQ;
 
   /*
@@ -1539,7 +1539,7 @@ void MTU_release_invoke_id(u8 invoke_id,MTU_DLG* dlg)
    * free in this function.
    */
 
-  dlg->invoke_id = 0;
+  dlg->ss7invokeID = 0;
 
   return;
 }
@@ -1585,8 +1585,8 @@ void MTU_release_request(u16 dlg_id)
   mtu_active--;
 
   ss7RequestMap.at(dlg_id).state = rs_finished;
-  ss7RequestMap.at(dlg_id).invoke_id=0;
-  time(&ss7RequestMap.at(dlg_id).state_change_time);
+  ss7RequestMap.at(dlg_id).ss7invokeID = 0;
+  time(&ss7RequestMap.at(dlg_id).stateChangeTime);
   /*
    * Clear any stored IMSI by setting the number of bytes to zero.
    */
@@ -1622,35 +1622,35 @@ int MTU_wait_open_cnf(MTU_MSG* msg/*MTU_DLG* dlg*/)
         if (msg->type == MAPDT_U_ABORT_IND)
         {
           if (bit_test(msg->pi, MAPPN_user_rsn)) {
-            MTU_disp_err_val(msg->dlg_id, "MAP-U-ABORT-Ind received with user reason = ",
+            MTU_disp_err_val(msg->ss7dialogueID, "MAP-U-ABORT-Ind received with user reason = ",
                               msg->user_reason,GetMAPUserReasonDescr(msg->user_reason));
             sprintf(buf,"MAP-U-ABORT-Ind received with user reason =0x%04x (%s)",msg->user_reason,
                     GetMAPUserReasonDescr(msg->user_reason));
-            ss7RequestMap.at(msg->dlg_id).error=buf;
+            ss7RequestMap.at(msg->ss7dialogueID).error=buf;
           }
           else {
-            MTU_disp_err(msg->dlg_id,"MAP-U-ABORT-Ind received");
-            ss7RequestMap.at(msg->dlg_id).error="MAP-U-ABORT-Ind received";
+            MTU_disp_err(msg->ss7dialogueID,"MAP-U-ABORT-Ind received");
+            ss7RequestMap.at(msg->ss7dialogueID).error="MAP-U-ABORT-Ind received";
            }
         }
         else
         {
           if (bit_test(msg->pi, MAPPN_prov_rsn)) {
-            MTU_disp_err_val(msg->dlg_id,"MAP-P-ABORT-Ind received with provider reason = ",
+            MTU_disp_err_val(msg->ss7dialogueID,"MAP-P-ABORT-Ind received with provider reason = ",
                              msg->prov_reason,GetMAPProviderReasonDescr(msg->prov_reason));
             sprintf(buf,"MAP-P-ABORT-Ind received with provider reason =0x%04x (%s)",msg->prov_reason,
                     GetMAPProviderReasonDescr(msg->prov_reason));
-            ss7RequestMap.at(msg->dlg_id).error=buf;
+            ss7RequestMap.at(msg->ss7dialogueID).error=buf;
           }
           else {
-            MTU_disp_err(msg->dlg_id,"MAP-P-ABORT-Ind received");
-            ss7RequestMap.at(msg->dlg_id).error="MAP-P-ABORT-Ind received";
+            MTU_disp_err(msg->ss7dialogueID,"MAP-P-ABORT-Ind received");
+            ss7RequestMap.at(msg->ss7dialogueID).error="MAP-P-ABORT-Ind received";
           }
         }
 //        MTU_release_invoke_id(dlg->invoke_id, dlg);
 //        MTU_release_request(msg->dlg_id);
-        ss7RequestMap.at(msg->dlg_id).state=rs_finished;
-        time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+        ss7RequestMap.at(msg->ss7dialogueID).state=rs_finished;
+        time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
         break;
 
       case MAPDT_OPEN_CNF:
@@ -1661,8 +1661,8 @@ int MTU_wait_open_cnf(MTU_MSG* msg/*MTU_DLG* dlg*/)
            * MAP-FORWARD-SHORT-MESSAGE-Cnf which indicates whether or
            * not the short message was delivered successfully.
            */
-          ss7RequestMap.at(msg->dlg_id).state = rs_wait_serv_cnf;
-          time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+          ss7RequestMap.at(msg->ss7dialogueID).state = rs_wait_serv_cnf;
+          time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
         }
         else
         {
@@ -1671,31 +1671,31 @@ int MTU_wait_open_cnf(MTU_MSG* msg/*MTU_DLG* dlg*/)
            * and idle the state machine.
            */
           if (bit_test(msg->pi, MAPPN_refuse_rsn)) {
-            MTU_disp_err_val(msg->dlg_id,"dialogue refused with reason: %x ",
+            MTU_disp_err_val(msg->ss7dialogueID,"dialogue refused with reason: %x ",
                              msg->refuse_reason, GetMAPRefuseReasonDescr(msg->refuse_reason));
             sprintf(buf,"Dialogue refused with reason: 0x%04x (%s)",msg->refuse_reason,GetMAPRefuseReasonDescr(msg->refuse_reason));
-            ss7RequestMap.at(msg->dlg_id).error=buf;
+            ss7RequestMap.at(msg->ss7dialogueID).error=buf;
           }
           else {
-            MTU_disp_err(msg->dlg_id,"dialogue refused");
-            ss7RequestMap.at(msg->dlg_id).error="Dialogue refused";
+            MTU_disp_err(msg->ss7dialogueID,"dialogue refused");
+            ss7RequestMap.at(msg->ss7dialogueID).error="Dialogue refused";
           }
 //          MTU_release_invoke_id(dlg->invoke_id, dlg);
 //          MTU_release_dlg_id(msg->dlg_id);
-            MTU_release_request(msg->dlg_id);
-          ss7RequestMap.at(msg->dlg_id).state=rs_finished;
-          time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+            MTU_release_request(msg->ss7dialogueID);
+          ss7RequestMap.at(msg->ss7dialogueID).state=rs_finished;
+          time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
         }
         break;
 
       default:
-        MTU_disp_err_val(msg->dlg_id,"Unexpected dialogue primitive received: ",msg->type, "");
+        MTU_disp_err_val(msg->ss7dialogueID,"Unexpected dialogue primitive received: ",msg->type, "");
         break;
     }
   }
   else
   {
-      MTU_disp_err_val(msg->dlg_id,"Unexpected service primitive received: ", msg->type, "");
+      MTU_disp_err_val(msg->ss7dialogueID,"Unexpected service primitive received: ", msg->type, "");
   }
 
   return(0);
@@ -1820,254 +1820,254 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
 
             switch(param) {
             case MAPPN_RAND1:
-                if(ss7Req.triplets_num_recv + 0 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.rand[ss7Req.triplets_num_recv + 0],value,32);
-                    ss7Req.rand[ss7Req.triplets_num_recv + 0][32]=0;
+                if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 0],value,32);
+                    ss7Req.rand[ss7Req.receivedVectorsNum + 0][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND1",value);
                 break;
             case MAPPN_RAND2:
-                if(ss7Req.triplets_num_recv + 1 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.rand[ss7Req.triplets_num_recv + 1],value,32);
-                    ss7Req.rand[ss7Req.triplets_num_recv + 1][32]=0;
+                if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 1],value,32);
+                    ss7Req.rand[ss7Req.receivedVectorsNum + 1][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND2",value);
                 break;
             case MAPPN_RAND3:
-                if(ss7Req.triplets_num_recv + 2 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.rand[ss7Req.triplets_num_recv + 2],value,32);
-                    ss7Req.rand[ss7Req.triplets_num_recv + 2][32]=0;
+                if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 2],value,32);
+                    ss7Req.rand[ss7Req.receivedVectorsNum + 2][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND3",value);
                 break;
             case MAPPN_RAND4:
-                if(ss7Req.triplets_num_recv + 3 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.rand[ss7Req.triplets_num_recv + 3],value,32);
-                    ss7Req.rand[ss7Req.triplets_num_recv + 3][32]=0;
+                if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 3],value,32);
+                    ss7Req.rand[ss7Req.receivedVectorsNum + 3][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND4",value);
                 break;
             case MAPPN_RAND5:
-                if(ss7Req.triplets_num_recv + 4 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.rand[ss7Req.triplets_num_recv + 4],value,32);
-                    ss7Req.rand[ss7Req.triplets_num_recv + 4][32]=0;
+                if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 4],value,32);
+                    ss7Req.rand[ss7Req.receivedVectorsNum + 4][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND5",value);
                 break;
             case MAPPN_KC1:
-                if(ss7Req.triplets_num_recv + 0 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.kc[ss7Req.triplets_num_recv  + 0],value,16);
-                    ss7Req.kc[ss7Req.triplets_num_recv + 0][16]=0;
+                if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.kc[ss7Req.receivedVectorsNum  + 0],value,16);
+                    ss7Req.kc[ss7Req.receivedVectorsNum + 0][16]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC1",value);
                 break;
             case MAPPN_KC2:
-                if(ss7Req.triplets_num_recv + 1 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.kc[ss7Req.triplets_num_recv + 1],value,16);
-                    ss7Req.kc[ss7Req.triplets_num_recv + 1][16]=0;
+                if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.kc[ss7Req.receivedVectorsNum + 1],value,16);
+                    ss7Req.kc[ss7Req.receivedVectorsNum + 1][16]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC1",value);
                 break;
             case MAPPN_KC3:
-                if(ss7Req.triplets_num_recv + 2 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.kc[ss7Req.triplets_num_recv + 2],value,16);
-                    ss7Req.kc[ss7Req.triplets_num_recv + 2][16]=0;
+                if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.kc[ss7Req.receivedVectorsNum + 2],value,16);
+                    ss7Req.kc[ss7Req.receivedVectorsNum + 2][16]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC3",value);
                 break;
             case MAPPN_KC4:
-                if(ss7Req.triplets_num_recv + 3 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.kc[ss7Req.triplets_num_recv + 3],value,16);
-                    ss7Req.kc[ss7Req.triplets_num_recv + 3][16]=0;
+                if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.kc[ss7Req.receivedVectorsNum + 3],value,16);
+                    ss7Req.kc[ss7Req.receivedVectorsNum + 3][16]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC4",value);
                 break;
             case MAPPN_KC5:
-                if(ss7Req.triplets_num_recv + 4 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.kc[ss7Req.triplets_num_recv + 4],value,16);
-                    ss7Req.kc[ss7Req.triplets_num_recv + 4][16]=0;
+                if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.kc[ss7Req.receivedVectorsNum + 4],value,16);
+                    ss7Req.kc[ss7Req.receivedVectorsNum + 4][16]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC5",value);
                 break;
             case MAPPN_SRES1:
-                if(ss7Req.triplets_num_recv + 0 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.sres[ss7Req.triplets_num_recv + 0],value,8);
-                    ss7Req.sres[ss7Req.triplets_num_recv + 0][8]=0;
+                if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 0],value,8);
+                    ss7Req.sres[ss7Req.receivedVectorsNum + 0][8]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES1",value);
                 break;
             case MAPPN_SRES2:
-                if(ss7Req.triplets_num_recv + 1 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.sres[ss7Req.triplets_num_recv + 1],value,8);
-                    ss7Req.sres[ss7Req.triplets_num_recv + 1][8]=0;
+                if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 1],value,8);
+                    ss7Req.sres[ss7Req.receivedVectorsNum + 1][8]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES2",value);
                 break;
             case MAPPN_SRES3:
-                if(ss7Req.triplets_num_recv + 2 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.sres[ss7Req.triplets_num_recv + 2],value,8);
-                    ss7Req.sres[ss7Req.triplets_num_recv + 2][8]=0;
+                if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 2],value,8);
+                    ss7Req.sres[ss7Req.receivedVectorsNum + 2][8]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES3",value);
                 break;
             case MAPPN_SRES4:
-                if(ss7Req.triplets_num_recv + 3 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.sres[ss7Req.triplets_num_recv + 3],value,8);
-                    ss7Req.sres[ss7Req.triplets_num_recv + 3][8]=0;
+                if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 3],value,8);
+                    ss7Req.sres[ss7Req.receivedVectorsNum + 3][8]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES4",value);
                 break;
             case MAPPN_SRES5:
-                if(ss7Req.triplets_num_recv + 4 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.sres[ss7Req.triplets_num_recv + 4],value,8);
-                    ss7Req.sres[ss7Req.triplets_num_recv + 4][8]=0;
+                if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 4],value,8);
+                    ss7Req.sres[ss7Req.receivedVectorsNum + 4][8]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES5",value);
                 break;
             case MAPPN_XRES1:
-                if(ss7Req.triplets_num_recv + 0 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.xres[ss7Req.triplets_num_recv + 0],value,32);
-                    ss7Req.xres[ss7Req.triplets_num_recv + 0][32]=0;
+                if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 0],value,32);
+                    ss7Req.xres[ss7Req.receivedVectorsNum + 0][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s XRES1",value);
                 break;
             case MAPPN_XRES2:
-                if(ss7Req.triplets_num_recv + 1 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.xres[ss7Req.triplets_num_recv + 1],value,32);
-                    ss7Req.xres[ss7Req.triplets_num_recv + 1][32]=0;
+                if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 1],value,32);
+                    ss7Req.xres[ss7Req.receivedVectorsNum + 1][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s XRES2",value);
                 break;
             case MAPPN_XRES3:
-                if(ss7Req.triplets_num_recv + 2 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.xres[ss7Req.triplets_num_recv + 2],value,32);
-                    ss7Req.xres[ss7Req.triplets_num_recv + 2][32]=0;
+                if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 2],value,32);
+                    ss7Req.xres[ss7Req.receivedVectorsNum + 2][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES3",value);
                 break;
             case MAPPN_XRES4:
-                if(ss7Req.triplets_num_recv + 3 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.xres[ss7Req.triplets_num_recv + 3],value,32);
-                    ss7Req.xres[ss7Req.triplets_num_recv + 3][32]=0;
+                if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 3],value,32);
+                    ss7Req.xres[ss7Req.receivedVectorsNum + 3][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s XRES4",value);
                 break;
             case MAPPN_XRES5:
-                if(ss7Req.triplets_num_recv + 4 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.xres[ss7Req.triplets_num_recv + 4],value,32);
-                    ss7Req.xres[ss7Req.triplets_num_recv + 4][32]=0;
+                if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 4],value,32);
+                    ss7Req.xres[ss7Req.receivedVectorsNum + 4][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s XRES5",value);
                 break;
             case MAPPN_CK1:
-                if(ss7Req.triplets_num_recv + 0 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ck[ss7Req.triplets_num_recv + 0],value,32);
-                    ss7Req.ck[ss7Req.triplets_num_recv + 0][32]=0;
+                if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 0],value,32);
+                    ss7Req.ck[ss7Req.receivedVectorsNum + 0][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK1",value);
                 break;
             case MAPPN_CK2:
-                if(ss7Req.triplets_num_recv + 1 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ck[ss7Req.triplets_num_recv + 1],value,32);
-                    ss7Req.ck[ss7Req.triplets_num_recv + 1][32]=0;
+                if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 1],value,32);
+                    ss7Req.ck[ss7Req.receivedVectorsNum + 1][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK2",value);
                 break;
             case MAPPN_CK3:
-                if(ss7Req.triplets_num_recv + 2 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ck[ss7Req.triplets_num_recv + 2],value,32);
-                    ss7Req.ck[ss7Req.triplets_num_recv + 2][32]=0;
+                if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 2],value,32);
+                    ss7Req.ck[ss7Req.receivedVectorsNum + 2][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK3",value);
                 break;
             case MAPPN_CK4:
-                if(ss7Req.triplets_num_recv + 3 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ck[ss7Req.triplets_num_recv + 3],value,32);
-                    ss7Req.ck[ss7Req.triplets_num_recv + 3][32]=0;
+                if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 3],value,32);
+                    ss7Req.ck[ss7Req.receivedVectorsNum + 3][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK4",value);
                 break;
             case MAPPN_CK5:
-                if(ss7Req.triplets_num_recv + 4 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ck[ss7Req.triplets_num_recv + 4],value,32);
-                    ss7Req.ck[ss7Req.triplets_num_recv + 4][32]=0;
+                if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 4],value,32);
+                    ss7Req.ck[ss7Req.receivedVectorsNum + 4][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK5",value);
                 break;
             case MAPPN_IK1:
-                if(ss7Req.triplets_num_recv + 0 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ik[ss7Req.triplets_num_recv + 0],value,32);
-                    ss7Req.ik[ss7Req.triplets_num_recv + 0][32]=0;
+                if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 0],value,32);
+                    ss7Req.ik[ss7Req.receivedVectorsNum + 0][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK1",value);
                 break;
             case MAPPN_IK2:
-                if(ss7Req.triplets_num_recv + 1 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ik[ss7Req.triplets_num_recv + 1],value,32);
-                    ss7Req.ik[ss7Req.triplets_num_recv + 1][32]=0;
+                if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 1],value,32);
+                    ss7Req.ik[ss7Req.receivedVectorsNum + 1][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK2",value);
                 break;
             case MAPPN_IK3:
-                if(ss7Req.triplets_num_recv + 2 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ik[ss7Req.triplets_num_recv + 2],value,32);
-                    ss7Req.ik[ss7Req.triplets_num_recv + 2][32]=0;
+                if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 2],value,32);
+                    ss7Req.ik[ss7Req.receivedVectorsNum + 2][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK3",value);
                 break;
             case MAPPN_IK4:
-                if(ss7Req.triplets_num_recv + 3 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ik[ss7Req.triplets_num_recv + 3],value,32);
-                    ss7Req.ik[ss7Req.triplets_num_recv + 3][32]=0;
+                if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 3],value,32);
+                    ss7Req.ik[ss7Req.receivedVectorsNum + 3][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK4",value);
                 break;
             case MAPPN_IK5:
-                if(ss7Req.triplets_num_recv + 4 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.ik[ss7Req.triplets_num_recv + 4],value,32);
-                    ss7Req.ik[ss7Req.triplets_num_recv + 4][32]=0;
+                if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 4],value,32);
+                    ss7Req.ik[ss7Req.receivedVectorsNum + 4][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK5",value);
                 break;
             case MAPPN_AUTN1:
-                if(ss7Req.triplets_num_recv + 0 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.autn[ss7Req.triplets_num_recv + 0],value,32);
-                    ss7Req.autn[ss7Req.triplets_num_recv + 0][32]=0;
+                if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 0],value,32);
+                    ss7Req.autn[ss7Req.receivedVectorsNum + 0][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN1",value);
                 break;
             case MAPPN_AUTN2:
-                if(ss7Req.triplets_num_recv + 1 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.autn[ss7Req.triplets_num_recv + 1],value,32);
-                    ss7Req.autn[ss7Req.triplets_num_recv + 1][32]=0;
+                if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 1],value,32);
+                    ss7Req.autn[ss7Req.receivedVectorsNum + 1][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN2",value);
                 break;
             case MAPPN_AUTN3:
-                if(ss7Req.triplets_num_recv + 2 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.autn[ss7Req.triplets_num_recv + 2],value,32);
-                    ss7Req.autn[ss7Req.triplets_num_recv + 2][32]=0;
+                if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 2],value,32);
+                    ss7Req.autn[ss7Req.receivedVectorsNum + 2][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN3",value);
                 break;
             case MAPPN_AUTN4:
-                if(ss7Req.triplets_num_recv + 3 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.autn[ss7Req.triplets_num_recv + 3],value,32);
-                    ss7Req.autn[ss7Req.triplets_num_recv + 3][32]=0;
+                if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 3],value,32);
+                    ss7Req.autn[ss7Req.receivedVectorsNum + 3][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN4",value);
                 break;
             case MAPPN_AUTN5:
-                if(ss7Req.triplets_num_recv + 4 < ss7Req.triplets_num_req) {
-                    strncpy(ss7Req.autn[ss7Req.triplets_num_recv + 4],value,32);
-                    ss7Req.autn[ss7Req.triplets_num_recv + 4][32]=0;
+                if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
+                    strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 4],value,32);
+                    ss7Req.autn[ss7Req.receivedVectorsNum + 4][32]=0;
                 }
                 if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN5",value);
                 break;
             }
         }
 
-        for(i=ss7Req.triplets_num_recv; i<ss7Req.triplets_num_req; i++)
+        for(i=ss7Req.receivedVectorsNum; i<ss7Req.requestedVectorsNum; i++)
             if(strlen(ss7Req.rand[i])>0 && strlen(ss7Req.kc[i])>0 && strlen(ss7Req.sres[i])>0 )
                 // correct triplet received, count further
                 continue;
@@ -2098,8 +2098,8 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
                     break;
 
 
-        if(i > ss7Req.triplets_num_recv) {
-            ss7Req.triplets_num_recv = i;
+        if(i > ss7Req.receivedVectorsNum) {
+            ss7Req.receivedVectorsNum = i;
             ss7Req.successful = true;
         }
         else
@@ -2141,35 +2141,35 @@ int MTU_wait_serv_cnf(MSG* m,MTU_MSG* msg/*,MTU_DLG* dlg*/)
         if (msg->type == MAPDT_U_ABORT_IND)
         {
           if (bit_test(msg->pi, MAPPN_user_rsn)) {
-            MTU_disp_err_val(msg->dlg_id,"MAP-U-ABORT-Ind received with user reason = ",
+            MTU_disp_err_val(msg->ss7dialogueID,"MAP-U-ABORT-Ind received with user reason = ",
                              msg->user_reason, GetMAPUserReasonDescr(msg->user_reason));
             sprintf(buf,"MAP-U-ABORT-Ind received with user reason =0x%04x (%s)",msg->user_reason,GetMAPUserReasonDescr(msg->user_reason));
-            ss7RequestMap.at(msg->dlg_id).error=buf;
+            ss7RequestMap.at(msg->ss7dialogueID).error=buf;
           }
           else {
-            MTU_disp_err(msg->dlg_id,"MAP-U-ABORT-Ind received");
-            ss7RequestMap.at(msg->dlg_id).error="MAP-U-ABORT-Ind received";
+            MTU_disp_err(msg->ss7dialogueID,"MAP-U-ABORT-Ind received");
+            ss7RequestMap.at(msg->ss7dialogueID).error="MAP-U-ABORT-Ind received";
           }
         }
         else
         {
           if (bit_test(msg->pi, MAPPN_prov_rsn)) {
-            MTU_disp_err_val(msg->dlg_id,"MAP-P-ABORT-Ind received with provider reason = ",
+            MTU_disp_err_val(msg->ss7dialogueID,"MAP-P-ABORT-Ind received with provider reason = ",
                              msg->prov_reason, GetMAPProviderReasonDescr(msg->prov_reason));
             sprintf(buf,"MAP-P-ABORT-Ind received with provider reason =0x%04x (%s)",msg->prov_reason,GetMAPProviderReasonDescr(msg->prov_reason));
-            ss7RequestMap.at(msg->dlg_id).error=buf;
+            ss7RequestMap.at(msg->ss7dialogueID).error=buf;
           }
           else {
-            MTU_disp_err(msg->dlg_id,"MAP-P-ABORT-Ind received");
-            ss7RequestMap.at(msg->dlg_id).error="MAP-U-ABORT-Ind received";
+            MTU_disp_err(msg->ss7dialogueID,"MAP-P-ABORT-Ind received");
+            ss7RequestMap.at(msg->ss7dialogueID).error="MAP-U-ABORT-Ind received";
           }
 
         }
 //        MTU_release_invoke_id(dlg->invoke_id, dlg);
 //        MTU_release_dlg_id(msg->dlg_id);
 //        MTU_release_request(msg->dlg_id);
-        ss7RequestMap.at(msg->dlg_id).state=rs_finished;
-        time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+        ss7RequestMap.at(msg->ss7dialogueID).state=rs_finished;
+        time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
 
         break;
 
@@ -2180,14 +2180,14 @@ int MTU_wait_serv_cnf(MSG* m,MTU_MSG* msg/*,MTU_DLG* dlg*/)
          * ID, and idle the state machine.
          */
         if (bit_test(msg->pi, MAPPN_prob_diag)) {
-          MTU_disp_err_val(msg->dlg_id,"MAP-NOTICE-Ind received with problem diagnostic = ",
+          MTU_disp_err_val(msg->ss7dialogueID,"MAP-NOTICE-Ind received with problem diagnostic = ",
                            msg->prob_diag,GetMAPProblemDiagnosticDescr(msg->prob_diag));
           sprintf(buf,"MAP-NOTICE-Ind received with problem diagnostic =0x%04x (%s)",msg->prob_diag,GetMAPProblemDiagnosticDescr(msg->prob_diag));
-          ss7RequestMap.at(msg->dlg_id).error=buf;
+          ss7RequestMap.at(msg->ss7dialogueID).error=buf;
         }
         else {
-          MTU_disp_err(msg->dlg_id,"MAP-NOTICE-Ind received");
-          ss7RequestMap.at(msg->dlg_id).error="MAP-NOTICE-Ind received";
+          MTU_disp_err(msg->ss7dialogueID,"MAP-NOTICE-Ind received");
+          ss7RequestMap.at(msg->ss7dialogueID).error="MAP-NOTICE-Ind received";
         }
 
 
@@ -2202,8 +2202,8 @@ int MTU_wait_serv_cnf(MSG* m,MTU_MSG* msg/*,MTU_DLG* dlg*/)
         msg->user_reason = MAPUR_unspecified_reason;
         MTU_send_dlg_req(msg);
 
-        ss7RequestMap.at(msg->dlg_id).state=rs_finished;
-        time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+        ss7RequestMap.at(msg->ss7dialogueID).state=rs_finished;
+        time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
 
         break;
       case MAPDT_DELIMITER_IND:
@@ -2213,11 +2213,11 @@ int MTU_wait_serv_cnf(MSG* m,MTU_MSG* msg/*,MTU_DLG* dlg*/)
  //       MTU_Send_UnstructuredSSRequestRSP (msg->dlg_id, dlg->invoke_id);
 
 // EXPERIMENTAL        MTU_send_close_request(msg->dlg_id);
-        MTU_send_Delimit(msg->dlg_id);
+        MTU_send_Delimit(msg->ss7dialogueID);
 
         break;
     default:
-        MTU_disp_err_val(msg->dlg_id,"Unexpected dialogue primitive received: ", msg->type, "");
+        MTU_disp_err_val(msg->ss7dialogueID,"Unexpected dialogue primitive received: ", msg->type, "");
         break;
     }
   }
@@ -2226,7 +2226,7 @@ int MTU_wait_serv_cnf(MSG* m,MTU_MSG* msg/*,MTU_DLG* dlg*/)
     /*
      * Check that this message is related to the current invocation.
      */
-    if (msg->invoke_id == ss7RequestMap.at(msg->dlg_id).invoke_id)
+    if (msg->ss7invokeID == ss7RequestMap.at(msg->ss7dialogueID).ss7invokeID)
     {
       switch (msg->type)
       {
@@ -2249,9 +2249,9 @@ int MTU_wait_serv_cnf(MSG* m,MTU_MSG* msg/*,MTU_DLG* dlg*/)
              * Send a MAP-U_ABORT-Req and release the dialogue ID.
              */
 //            MTU_disp_err("Service primitive cnf received with");
-            MTU_disp_err_val(msg->dlg_id,"Service primitive cnf received with provider error = ", msg->prov_err,GetMAPProviderErrorDescr(msg->prov_err));
+            MTU_disp_err_val(msg->ss7dialogueID,"Service primitive cnf received with provider error = ", msg->prov_err,GetMAPProviderErrorDescr(msg->prov_err));
             sprintf(buf,"MAP provider error=0x%04x (%s)",msg->prov_err,GetMAPProviderErrorDescr(msg->prov_err));
-            ss7RequestMap.at(msg->dlg_id).error=buf;
+            ss7RequestMap.at(msg->ss7dialogueID).error=buf;
 
             msg->type = MAPDT_U_ABORT_REQ;
             memset((void *)msg->pi, 0, PI_BYTES);
@@ -2262,49 +2262,49 @@ int MTU_wait_serv_cnf(MSG* m,MTU_MSG* msg/*,MTU_DLG* dlg*/)
 
 //            MTU_release_dlg_id(msg->dlg_id);
 //            MTU_release_request(msg->dlg_id);
-            ss7RequestMap.at(msg->dlg_id).state=rs_finished;
-            time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+            ss7RequestMap.at(msg->ss7dialogueID).state=rs_finished;
+            time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
           }
           else
           {
             if (bit_test(msg->pi, MAPPN_user_err))
             {
               // MTU_disp_err("Service primitive cnf received with");
-              MTU_disp_err_val(msg->dlg_id,"Service primitive cnf received with user error = ", msg->user_err,
+              MTU_disp_err_val(msg->ss7dialogueID,"Service primitive cnf received with user error = ", msg->user_err,
                                GetMAPUserErrorDescr(msg->user_err));
               sprintf(buf,"MAP user error=0x%04x (%s)",msg->user_err,GetMAPUserErrorDescr(msg->user_err));
-              ss7RequestMap.at(msg->dlg_id).error=buf;
+              ss7RequestMap.at(msg->ss7dialogueID).error=buf;
             }
             else
-                ParseTriplets(msg->dlg_id,m);
+                ParseTriplets(msg->ss7dialogueID,m);
 
             /*
              * If the IMSI is present, save it in case it is needed for a
              * subsequent dialogue.
              */
             if (bit_test(msg->pi, MAPPN_imsi))
-              ss7RequestMap.at(msg->dlg_id).bcd_imsi = msg->imsi;
+              ss7RequestMap.at(msg->ss7dialogueID).bcdIMSI = msg->imsi;
 
             //dlg->state = MTU_WAIT_CLOSE_IND;
-            ss7RequestMap.at(msg->dlg_id).state = rs_wait_close_ind;
-            time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+            ss7RequestMap.at(msg->ss7dialogueID).state = rs_wait_close_ind;
+            time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
           }
           break;
         case MAPST_UNSTR_SS_REQ_IND:
           {
-             ss7RequestMap.at(msg->dlg_id).state = rs_wait_serv_cnf;
-             time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+             ss7RequestMap.at(msg->ss7dialogueID).state = rs_wait_serv_cnf;
+             time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
           }
           break;
         default:
-          MTU_disp_err_val(msg->dlg_id,"Unexpected service primitive received: ", msg->type, "");
+          MTU_disp_err_val(msg->ss7dialogueID,"Unexpected service primitive received: ", msg->type, "");
           break;
       }
     }
     else
     {
-      MTU_disp_err_val(msg->dlg_id,"Received service primitive with unexpected invoke ID: ",
-                       msg->invoke_id, "");
+      MTU_disp_err_val(msg->ss7dialogueID,"Received service primitive with unexpected invoke ID: ",
+                       msg->ss7invokeID, "");
     }
   }
 
@@ -2359,8 +2359,8 @@ int MTU_wait_close_ind(MTU_MSG* msg/*,MTU_DLG* dlg*/)
 //        }
 //        else
 
-          ss7RequestMap.at(msg->dlg_id).state=rs_finished;
-          time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+          ss7RequestMap.at(msg->ss7dialogueID).state=rs_finished;
+          time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
         break;
 
       case MAPDT_U_ABORT_IND:
@@ -2373,50 +2373,50 @@ int MTU_wait_close_ind(MTU_MSG* msg/*,MTU_DLG* dlg*/)
         if (msg->type == MAPDT_U_ABORT_IND)
         {
           if (bit_test(msg->pi, MAPPN_user_rsn)) {
-            MTU_disp_err_val(msg->dlg_id,"MAP-U-ABORT-Ind received with user reason = ",
+            MTU_disp_err_val(msg->ss7dialogueID,"MAP-U-ABORT-Ind received with user reason = ",
                              msg->user_reason,GetMAPUserReasonDescr(msg->user_reason));
             sprintf(buf,"MAP-U-ABORT-Ind received with user reason = 0x%04x (%s)",msg->user_reason,GetMAPUserReasonDescr(msg->user_reason));
-            ss7RequestMap.at(msg->dlg_id).error=buf;
+            ss7RequestMap.at(msg->ss7dialogueID).error=buf;
           }
           else {
-            MTU_disp_err(msg->dlg_id,"MAP-U-ABORT-Ind received");
-            ss7RequestMap.at(msg->dlg_id).error="MAP-U-ABORT-Ind received";
+            MTU_disp_err(msg->ss7dialogueID,"MAP-U-ABORT-Ind received");
+            ss7RequestMap.at(msg->ss7dialogueID).error="MAP-U-ABORT-Ind received";
           }
         }
         else
         {
           if (bit_test(msg->pi, MAPPN_prov_rsn)) {
-            MTU_disp_err_val(msg->dlg_id,"MAP-P-ABORT-Ind received with provider reason = ",
+            MTU_disp_err_val(msg->ss7dialogueID,"MAP-P-ABORT-Ind received with provider reason = ",
                              msg->prov_reason,GetMAPProviderReasonDescr(msg->prov_reason));
             sprintf(buf,"MAP-P-ABORT-Ind received with provider reason = 0x%04x (%s)",msg->prov_reason,GetMAPProviderReasonDescr(msg->prov_reason));
-            ss7RequestMap.at(msg->dlg_id).error=buf;
+            ss7RequestMap.at(msg->ss7dialogueID).error=buf;
           }
           else {
-            MTU_disp_err(msg->dlg_id,"MAP-P-ABORT-Ind received");
-            ss7RequestMap.at(msg->dlg_id).error="MAP-U-ABORT-Ind received";
+            MTU_disp_err(msg->ss7dialogueID,"MAP-P-ABORT-Ind received");
+            ss7RequestMap.at(msg->ss7dialogueID).error="MAP-U-ABORT-Ind received";
           }
         }
-        ss7RequestMap.at(msg->dlg_id).state = rs_finished;
-        time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+        ss7RequestMap.at(msg->ss7dialogueID).state = rs_finished;
+        time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
         break;
 
       case MAPDT_DELIMITER_IND:
         // repeat service request for extra vectors, increasing invoke_id
-        ss7RequestMap.at(msg->dlg_id).invoke_id++;
-        MTU_send_auth_info(msg->dlg_id,false);
-        MTU_send_Delimit(msg->dlg_id);
-        ss7RequestMap.at(msg->dlg_id).state = rs_wait_serv_cnf;
-        time(&ss7RequestMap.at(msg->dlg_id).state_change_time);
+        ss7RequestMap.at(msg->ss7dialogueID).ss7invokeID++;
+        MTU_send_auth_info(msg->ss7dialogueID,false);
+        MTU_send_Delimit(msg->ss7dialogueID);
+        ss7RequestMap.at(msg->ss7dialogueID).state = rs_wait_serv_cnf;
+        time(&ss7RequestMap.at(msg->ss7dialogueID).stateChangeTime);
         break;
 
       default:
-        MTU_disp_err_val(msg->dlg_id,"Unexpected dialogue primitive received: ", msg->type, "");
+        MTU_disp_err_val(msg->ss7dialogueID,"Unexpected dialogue primitive received: ", msg->type, "");
         break;
     }
   }
   else
   {
-      MTU_disp_err_val(msg->dlg_id,"Unexpected service primitive received: ", msg->type, "");
+      MTU_disp_err_val(msg->ss7dialogueID,"Unexpected service primitive received: ", msg->type, "");
   }
 
   return(0);
@@ -2450,9 +2450,9 @@ int MTU_smac(MSG* m)
     return 0;
   }
 
-    if (ss7RequestMap.find(ind.dlg_id) == ss7RequestMap.end())
+    if (ss7RequestMap.find(ind.ss7dialogueID) == ss7RequestMap.end())
     {
-        MTU_disp_err_val(m->hdr.id,"Unexpected dialogue ID=0x", ind.dlg_id, "");
+        MTU_disp_err_val(m->hdr.id,"Unexpected dialogue ID=0x", ind.ss7dialogueID, "");
       return 0;
     }
 //        dlg = MTU_get_dlg_data(ind.dlg_id);
@@ -2460,7 +2460,7 @@ int MTU_smac(MSG* m)
       /*
        * Handle the event according to the current state.
        */
-      switch (ss7RequestMap.at(ind.dlg_id).state /*dlg->state*/)
+      switch (ss7RequestMap.at(ind.ss7dialogueID).state /*dlg->state*/)
       {
         case rs_wait_opn_cnf:
           MTU_wait_open_cnf(&ind/*, ind.dlg_id*/);
@@ -2476,12 +2476,12 @@ int MTU_smac(MSG* m)
 
         case rs_idle:
         default:
-          MTU_disp_err(ind.dlg_id,"Message received for inactive dialogue");
+          MTU_disp_err(ind.ss7dialogueID,"Message received for inactive dialogue");
           break;
       }
 
-      if(ss7RequestMap.at(ind.dlg_id).state == rs_finished) {
-          OnDialogueFinish(ind.dlg_id);
+      if(ss7RequestMap.at(ind.ss7dialogueID).state == rs_finished) {
+          OnDialogueFinish(ind.ss7dialogueID);
       }
   return(0);
   }
