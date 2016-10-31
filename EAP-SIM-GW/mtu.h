@@ -149,13 +149,8 @@ extern "C" {
 #define BIN2CH(b)               ((char)(((b)<10)?'0'+(b):'a'-10+(b)))
 
 
-/*
- * MTU state definitions
- */
-//#define MTU_IDLE                (0)     /* Idle */
-//#define MTU_WAIT_OPEN_CNF       (1)     /* Wait for Open confirmation */
-//#define MTU_WAIT_SERV_CNF       (2)     /* Wait for MT SMS confirm */
-//#define MTU_WAIT_CLOSE_IND      (3)     /* Wait for Close ind */
+#define MIN_VECTORS_NUM  (1)
+#define MAX_VECTORS_NUM  (5)
 
 /*
  * Structure used for origination and destination addresses
@@ -301,7 +296,7 @@ typedef struct
 {
     REQUEST_TYPE request_type;
     u16 clientRequestNum;
-    u32 gatewayRequestNum;
+    u32 gatewayRequestID;
     char imsi[30];
     MTU_BCDSTR bcdIMSI;
     u8 requestedVectorsNum;            /*number of triplets requested*/
@@ -311,13 +306,38 @@ typedef struct
     u8 ss7invokeID;                 /* Invoke ID for service request */
     REQUEST_STATE state;
     time_t stateChangeTime;
-    char rand[5][33];
-    char sres[5][9];
-    char kc[5][17];
-    char xres[5][33];
-    char ck[5][33];
-    char ik[5][33];
-    char autn[5][33];
+    char rand[MAX_VECTORS_NUM][33];
+    char sres[MAX_VECTORS_NUM][9];
+    char kc[MAX_VECTORS_NUM][17];
+    char xres[MAX_VECTORS_NUM][33];
+    char ck[MAX_VECTORS_NUM][33];
+    char ik[MAX_VECTORS_NUM][33];
+    char autn[MAX_VECTORS_NUM][33];
+
+    u8* binRAND[MAX_VECTORS_NUM];
+    u8* binXRES[MAX_VECTORS_NUM];
+    u8* binCK[MAX_VECTORS_NUM];
+    u8* binIK[MAX_VECTORS_NUM];
+    u8* binAUTN[MAX_VECTORS_NUM];
+    u8* binSRES[MAX_VECTORS_NUM];
+    u8* binKC[MAX_VECTORS_NUM];
+
+    u8 binRANDnum;
+    u8 binSRESnum;
+    u8 binKCnum;
+    u8 binXRESnum;
+    u8 binCKnum;
+    u8 binIKnum;
+    u8 binAUTNnum;
+
+    u8 binRANDsize;
+    u8 binSRESsize;
+    u8 binKCsize;
+    u8 binXRESsize;
+    u8 binCKsize;
+    u8 binIKsize;
+    u8 binAUTNsize;
+
     bool successful;
     std::string error;
 } SS7_REQUEST;

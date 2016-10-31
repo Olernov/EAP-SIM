@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <iostream>
+#include <string>
 #ifdef WIN32
     #include <conio.h>
     #include <Winsock2.h>
@@ -17,8 +19,8 @@
 #endif
 #include <map>
 
-#include "../EAP-SIM-GW/CoACommon.h"
-#include "../EAP-SIM-GW/PSPacket.h"
+#include "ps_common.h"
+#include "PSPacket.h"
 
 #ifdef WIN32
     #define SOCK_ERR WSAGetLastError()
@@ -55,44 +57,99 @@ int kbhit(void)
 }
 #endif
 
-int main(int argc, char *argv[])
+
+int ConnectToSS7Gateway(const char* ipAddress, int port)
 {
-    int sock, newsockfd, portno, clilen;
-    char buffer[2048];
-    struct sockaddr_in serv_addr, cli_addr;
-    int  n,nBytesReceived,res;
 #ifdef WIN32
     WSADATA wsaData;
+    if(WSAStartup(MAKEWORD(2,2), &wsaData)) {
+      printf("Error inititialing Winsock: %ld. Initialization failed.", SOCK_ERR);
+      return -1;
+    }
 #endif
+
+    /* First call to socket() function */
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0)
+    {
+      printf("Unable to create socket AF_INET,SOCK_STREAM.\n");
+      return -1;
+    }
+    /* Initialize socket structure */
+    struct sockaddr_in serv_addr;
+    memset((char *) &serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = inet_addr(ipAddress);
+    serv_addr.sin_port = htons(port);
+
+    if(connect(sock,(sockaddr*) &serv_addr, sizeof( serv_addr ))==-1) {
+        printf("Failed connecting to host %s. Error code=%ld. Initialization failed.", ipAddress, SOCK_ERR);
+        shutdown( sock, 2 );
+#ifdef WIN32
+        closesocket( sock );
+        WSACleanup();
+#else
+        close(sock);
+#endif
+        return -1;
+    }
+    printf("Connected to %s.\n-----------------------------------------------\n", ipAddress);
+
+#ifdef WIN32
+    u_long iMode=1;
+    if(ioctlsocket(sock, FIONBIO, &iMode) != 0) {
+        // Catch error
+        printf("Error setting socket in non-blocking mode: %ld. Initialization failed.", SOCK_ERR);
+        return -1;
+    }
+#else
+    fcntl(sock, F_SETFL, O_NONBLOCK);  // set to non-blocking
+#endif
+    return sock;
+}
+
+
+std::string PrintBinaryDump(const unsigned char* data, size_t size)
+{
+    const size_t buffer_size = 2048;
+    char buffer[buffer_size];
+    int i = 0;
+    for (; i < size; i++) {
+        if (3 * (i + 1) >= buffer_size - 1)
+            break;
+        sprintf(&buffer[3 * i], "%02X ", data[i]);
+    }
+    buffer[3 * (i + 1)] = '\0';
+    return std::string(buffer);
+
+}
+
+int main(int argc, char *argv[])
+{
+    char buffer[2048];
+    int  n, nBytesReceived, res;
+
     CPSPacket psPacket;
     //SPSRequest
     unsigned int uiReqNum=1;
-    unsigned int uiReqType=SS7GW_IMSI_REQ;
+
     char szNumberOfTriplets[3];
-    int len=0;
-    std::multimap<__uint16_t,SPSReqAttr*> mmRequest;
+
+
     CPSPacket spPacket;
-    __uint32_t ui32ReqNum=1;
+    __uint32_t ui32ReqNum = 1;
     __uint16_t ui16ReqType;
     __uint16_t ui16PackLen;
     char szTextParse[2048];
     //char szIMSI[20];
     //char* pszIMSI[6]={"250993254188441","250540000000011","250540000000010","250018302304209","250018302304208","250027415378891"  };
-    fd_set read_set, error_set, write_set;
-    struct timeval tv;
+
     char* imsi_file;
     FILE* fIMSI=NULL;
     char imsi[50];
     int port;
     SPSRequest *pspRequest;
     int nBytesProcessed;
-
-#ifdef WIN32
-    if(WSAStartup(MAKEWORD(2,2), &wsaData)) {
-      printf("Error inititialing Winsock: %ld. Initialization failed.", SOCK_ERR);
-      exit(1);
-    }
-#endif
 
     if(argc<2) {
         printf("Usage: gw-tester ip_address [port] [IMSI_file]");
@@ -108,53 +165,21 @@ int main(int argc, char *argv[])
     else
         imsi_file="IMSI.txt";
 
-    /* First call to socket() function */
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0)
-    {
-      printf("Unable to create socket AF_INET,SOCK_STREAM.\n");
-      exit(1);
+    int sock = ConnectToSS7Gateway(argv[1], port);
+    if (sock < 0) {
+        exit(1);
     }
-    /* Initialize socket structure */
-    memset((char *) &serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = inet_addr( argv[1] );
-    serv_addr.sin_port = htons(port);
 
-    if(connect(sock,(sockaddr*) &serv_addr, sizeof( serv_addr ))==-1)
-       {
-            printf("Failed connecting to host %s. Error code=%ld. Initialization failed.", argv[1], SOCK_ERR);
-            shutdown( sock, 2 );
-#ifdef WIN32
-            closesocket( sock );
-            WSACleanup();
-#else
-            close(sock);
-#endif
-            exit(1);
-        }
-    printf("Connected to %s.\n-----------------------------------------------\n",argv[1]);
-
-#ifdef WIN32
-    u_long iMode=1;
-    if(ioctlsocket(sock,FIONBIO,&iMode) != 0) {
-        // Catch error
-        printf("Error setting socket in non-blocking mode: %ld. Initialization failed.", SOCK_ERR);
-        return -1;
-    }
-#else
-    fcntl(sock, F_SETFL, O_NONBLOCK);  // set to non-blocking
-#endif
-
-
+    std::cout << "Enter number of vectors from 1 to 5 for triplets or from 6 to 9 for quintuplets: ";
     while(true) {
+        fd_set read_set;
+        struct timeval tv;
         tv.tv_sec = 0;  // time-out
-        tv.tv_usec = 100;
+        tv.tv_usec = 200;
         FD_ZERO( &read_set );
         FD_SET( sock, &read_set );
 
-        if ( (res=select( sock + 1, &read_set, NULL, NULL, &tv )) !=0  ) {
-
+        if ( (res = select( sock + 1, &read_set, NULL, NULL, &tv )) !=0  ) {
             nBytesReceived = recv(sock, buffer, 2048, 0);
             if(nBytesReceived <= 0) {
                 printf("Error receiving data on socket: %ld\n" ,SOCK_ERR);
@@ -164,13 +189,25 @@ int main(int argc, char *argv[])
             printf("\n%d bytes received.\n",nBytesReceived);
 
             nBytesProcessed = 0;
-            while(nBytesProcessed<nBytesReceived) {
+            while(nBytesProcessed < nBytesReceived) {
+               std::multimap<__uint16_t,SPSReqAttr*> mmRequest;
                pspRequest=(SPSRequest *)(buffer+nBytesProcessed);
                mmRequest.clear();
-               spPacket.Parse(pspRequest, 2048, ui32ReqNum,ui16ReqType,ui16PackLen,mmRequest, 1);
-               spPacket.Parse(pspRequest, 2048, szTextParse, 2048);
-               printf("%s\n",szTextParse );
-
+               spPacket.Parse(pspRequest, 2048, ui32ReqNum, ui16ReqType, ui16PackLen, mmRequest, 1);
+               if (ui16ReqType == SS7GW_QUINTUPLET_RESP || ui16ReqType == SS7GW_QUINTUPLET_CONF) {
+                   std::cout << "requestType: " << std::hex << ui16ReqType << ", requestNum: " << ui32ReqNum << std::endl;
+                   for(auto it = mmRequest.begin(); it != mmRequest.end(); it++) {
+                       size_t dataLen = ntohs(((SPSReqAttr*)(it->second))->m_usAttrLen) - sizeof(SPSReqAttr);
+                       std::cout << "AttrID: " << std::hex << ntohs(((SPSReqAttr*)(it->second))->m_usAttrType)
+                                 << ", len: " << std::dec << dataLen << std::endl;
+                       unsigned char* data = (unsigned char*)(it->second) + sizeof(SPSReqAttr);
+                       std::cout  << PrintBinaryDump(data, dataLen) << std::endl;
+                   }
+               }
+               else {
+                       spPacket.Parse(pspRequest, 2048, szTextParse, 2048);
+                       printf("%s\n",szTextParse );
+               }
                if(ui16PackLen >= 0)
                   nBytesProcessed += ui16PackLen;
                else
@@ -180,6 +217,7 @@ int main(int argc, char *argv[])
 
         }
         else {
+            // select time-out
             char c;
             if(kbhit()) {
 #ifdef WIN32
@@ -188,11 +226,20 @@ int main(int argc, char *argv[])
                 c=getchar();
 #endif
                 if(c =='q') {
-                    if(fIMSI)
-                        fclose(fIMSI);
                     exit(0);
                 }
-                if(c >= '1' and c<='5') {
+
+                if(c >= '1' and c<='9') {
+                    unsigned long requestType;
+                    unsigned short vectorsNum;
+                    if (c >= '6') {
+                        requestType = SS7GW_QUINTUPLET_REQ;
+                        vectorsNum = c - '5';
+                    }
+                    else {
+                        requestType = SS7GW_IMSI_REQ;
+                        vectorsNum = c - '0';
+                    }
                     fIMSI=fopen(imsi_file,"r");
                     if(!fIMSI) {
                         printf("Unable to open imsi file %s\n",imsi_file);
@@ -203,26 +250,29 @@ int main(int argc, char *argv[])
                     while(fgets(imsi,50,fIMSI)) {
                         if(imsi[strlen(imsi)-1] == '\n')
                             imsi[strlen(imsi)-1] = '\0';
-                        printf("Requesting %c triplets for IMSI %s\n",c,imsi);
+                        printf("Requesting %d auth vectors for IMSI %s\n", vectorsNum, imsi);
 
-                        sprintf(szNumberOfTriplets,"%02d",c-'0');
-
-                        if(psPacket.Init((SPSRequest*)buffer,2048,uiReqNum++,uiReqType)) {
+                        if(psPacket.Init((SPSRequest*)buffer, 2048, uiReqNum++, requestType)) {
                             // error - buffer too small
                             printf("SPSRequest.Init failed, buffer too small" );
                             break;
                         }
 
-                        if(!psPacket.AddAttr((SPSRequest*)buffer,2048,SS7GW_IMSI,(const void *)imsi,strlen(imsi))) {
+                        if(!psPacket.AddAttr((SPSRequest*)buffer, 2048, SS7GW_IMSI,(const void *)imsi,strlen(imsi))) {
                             // error - buffer too small
                             printf("SPSRequest.AddAttr szIMSI failed, buffer too small" );
                             break;
                         }
-
-                        if(!(len=psPacket.AddAttr((SPSRequest*)buffer,2048,SS7GW_TRIP_NUM,(const void *)szNumberOfTriplets,strlen(szNumberOfTriplets)))) {
-                            // error - buffer too small
-                            printf("SPSRequest.AddAttr szNumberOfTriplets failed, buffer too small" );
-                            break;
+                        unsigned long len;
+                        if (requestType == SS7GW_QUINTUPLET_REQ) {
+                            unsigned short vectorsNumN = htons(vectorsNum);
+                            len = psPacket.AddAttr((SPSRequest*)buffer,2048, ATTR_REQUESTED_VECTORS, (const void *)&vectorsNumN,
+                                                   sizeof(vectorsNumN)) ;
+                        }
+                        else {
+                           sprintf(szNumberOfTriplets, "%02d", vectorsNum);
+                           len = psPacket.AddAttr((SPSRequest*)buffer,2048, SS7GW_TRIP_NUM, (const void *)szNumberOfTriplets,
+                                                  strlen(szNumberOfTriplets)) ;
                         }
 
                         n=send(sock,buffer,len,0);

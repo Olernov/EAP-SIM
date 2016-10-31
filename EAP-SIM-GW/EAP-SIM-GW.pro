@@ -15,14 +15,16 @@ LIBS += "C:/DSI/LIB32/gctlib.lib" \
 
 HEADERS += \
     mtu.h \
-    pspacket.h
+    pspacket.h \
+    authinforequest.h
 
 
 SOURCES += \
     c:/Projects/PolicyServer/utils/src/utils/pspacket/pspacket.cpp \
     mtu_main.cpp \
     mtu_fmt.cpp \
-    mtu.cpp
+    mtu.cpp \
+    authinforequest.cpp
 
 
 QMAKE_LFLAGS = -static -static-libgcc

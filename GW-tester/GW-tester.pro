@@ -14,19 +14,24 @@ CONFIG   -= app_bundle
 
 TEMPLATE = app
 
+INCLUDEPATH += "C:/DSI/INC" \
+	"c:/Projects/PolicyServer/utils/src/utils/pspacket" \
+	"c:/Projects/PolicyServer/utils/src/utils"
+
 LIBS += -lws2_32
 
 
 SOURCES += main.cpp \
-    ../EAP-SIM-GW/PSPacket.cpp
+	c:/Projects/PolicyServer/utils/src/utils/pspacket/pspacket.cpp \
 
 HEADERS += \
-    ../EAP-SIM-GW/CoACommon.h \
-    ../EAP-SIM-GW/PSPacket.h
+	pspacket.h
 
 QMAKE_LFLAGS = -static -static-libgcc
+QMAKE_CXXFLAGS += -std=gnu++0x
+
 CONFIG += static
-DEFINES += STATIC
+DEFINES += STATIC WIN32
 message("~~~ static build ~~~")
 
-QMAKE_CXXFLAGS += -std=c11
+
