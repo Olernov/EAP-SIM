@@ -47,7 +47,7 @@
 
 #define LINT_ARGS
 #include "mtu.h"
-
+#include "authinfo.h"
 
 
 
@@ -1983,6 +1983,78 @@ void AssignStringElements(SS7_REQUEST& ss7Req, u16 ss7MessageParam, char* value)
     }
 }
 
+AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req,
+                                u8**& requestElement, u8*& requestElementSize)
+{
+    AuthAttributeType authInfoType = UNKNOWN;
+    switch(param) {
+    case MAPPN_RAND1:
+    case MAPPN_RAND2:
+    case MAPPN_RAND3:
+    case MAPPN_RAND4:
+    case MAPPN_RAND5:
+        requestElement = &(ss7Req.binRAND[ss7Req.binRANDnum++]);
+        requestElementSize = &ss7Req.binRANDsize;
+        authInfoType = RAND;
+        break;
+    case MAPPN_KC1:
+    case MAPPN_KC2:
+    case MAPPN_KC3:
+    case MAPPN_KC4:
+    case MAPPN_KC5:
+        requestElement = &(ss7Req.binKC[ss7Req.binKCnum++]);
+        requestElementSize = &ss7Req.binKCsize;
+        authInfoType = KC;
+        break;
+    case MAPPN_SRES1:
+    case MAPPN_SRES2:
+    case MAPPN_SRES3:
+    case MAPPN_SRES4:
+    case MAPPN_SRES5:
+        requestElement = &(ss7Req.binSRES[ss7Req.binSRESnum++]);
+        requestElementSize = &ss7Req.binSRESsize;
+        authInfoType = SRES;
+        break;
+    case MAPPN_XRES1:
+    case MAPPN_XRES2:
+    case MAPPN_XRES3:
+    case MAPPN_XRES4:
+    case MAPPN_XRES5:
+        requestElement = &(ss7Req.binXRES[ss7Req.binXRESnum++]);
+        requestElementSize = &ss7Req.binXRESsize;
+        authInfoType = XRES;
+        break;
+    case MAPPN_CK1:
+    case MAPPN_CK2:
+    case MAPPN_CK3:
+    case MAPPN_CK4:
+    case MAPPN_CK5:
+        requestElement = &(ss7Req.binCK[ss7Req.binCKnum++]);
+        requestElementSize = &ss7Req.binCKsize;
+        authInfoType = CK;
+        break;
+    case MAPPN_IK1:
+    case MAPPN_IK2:
+    case MAPPN_IK3:
+    case MAPPN_IK4:
+    case MAPPN_IK5:
+        requestElement = &(ss7Req.binIK[ss7Req.binIKnum++]);
+        requestElementSize = &ss7Req.binIKsize;
+        authInfoType = IK;
+        break;
+    case MAPPN_AUTN1:
+    case MAPPN_AUTN2:
+    case MAPPN_AUTN3:
+    case MAPPN_AUTN4:
+    case MAPPN_AUTN5:
+        requestElement = &(ss7Req.binAUTN[ss7Req.binAUTNnum++]);
+        requestElementSize = &ss7Req.binAUTNsize;
+        authInfoType = AUTN;
+        break;
+    }
+    return authInfoType;
+}
+
 
 int ParseTriplets(u16 dlg_id,MSG* msg)
 {
@@ -2017,6 +2089,7 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
 
         u8** requestElement = NULL;
         u8* requestElementSize = NULL;
+       // AuthVector authVector;
         while(p1 < pptr+mlen-1) {
             param=*p1;
             if(param==0xf0) {
@@ -2027,80 +2100,31 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
             }
             value[0]=0;
 
-            switch(param) {
-            case MAPPN_RAND1:
-            case MAPPN_RAND2:
-            case MAPPN_RAND3:
-            case MAPPN_RAND4:
-            case MAPPN_RAND5:
-                requestElement = &(ss7Req.binRAND[ss7Req.binRANDnum++]);
-                requestElementSize = &ss7Req.binRANDsize;
-                break;
-            case MAPPN_KC1:
-            case MAPPN_KC2:
-            case MAPPN_KC3:
-            case MAPPN_KC4:
-            case MAPPN_KC5:
-                requestElement = &(ss7Req.binKC[ss7Req.binKCnum++]);
-                requestElementSize = &ss7Req.binKCsize;
-                break;
-            case MAPPN_SRES1:
-            case MAPPN_SRES2:
-            case MAPPN_SRES3:
-            case MAPPN_SRES4:
-            case MAPPN_SRES5:
-                requestElement = &(ss7Req.binSRES[ss7Req.binSRESnum++]);
-                requestElementSize = &ss7Req.binSRESsize;
-                break;
-            case MAPPN_XRES1:
-            case MAPPN_XRES2:
-            case MAPPN_XRES3:
-            case MAPPN_XRES4:
-            case MAPPN_XRES5:
-                requestElement = &(ss7Req.binXRES[ss7Req.binXRESnum++]);
-                requestElementSize = &ss7Req.binXRESsize;
-                break;
-            case MAPPN_CK1:
-            case MAPPN_CK2:
-            case MAPPN_CK3:
-            case MAPPN_CK4:
-            case MAPPN_CK5:
-                requestElement = &(ss7Req.binCK[ss7Req.binCKnum++]);
-                requestElementSize = &ss7Req.binCKsize;
-                break;
-            case MAPPN_IK1:
-            case MAPPN_IK2:
-            case MAPPN_IK3:
-            case MAPPN_IK4:
-            case MAPPN_IK5:
-                requestElement = &(ss7Req.binIK[ss7Req.binIKnum++]);
-                requestElementSize = &ss7Req.binIKsize;
-                break;
-            case MAPPN_AUTN1:
-            case MAPPN_AUTN2:
-            case MAPPN_AUTN3:
-            case MAPPN_AUTN4:
-            case MAPPN_AUTN5:
-                requestElement = &(ss7Req.binAUTN[ss7Req.binAUTNnum++]);
-                requestElementSize = &ss7Req.binAUTNsize;
-                break;
-            default:
-                // unknown param, skip it
+            AuthAttributeType authInfoType =
+                    CheckMessageParamAndSetPointers(param, ss7Req, requestElement, requestElementSize);
+           if (authInfoType != UNKNOWN) {
+               plen = *(p1+1);
+               p1 += 2;
+               *requestElement = (u8*)malloc(plen);
+               memcpy(*requestElement, p1, plen);
+               (*requestElementSize) += plen;
+               ss7Req.AddAuthAttribute(authInfoType, AuthInfoAttribute(p1, plen));
+               if (ss7Req.EnoughVectorsReceived())  {
+                   ss7Req.SetSuccess(true);
+               }
+
+               for(int i=0; i<plen; i++, p1++)
+                   sprintf(value,"%s%c%c", value, BIN2CH(*p1/16), BIN2CH(*p1%16));
+               AssignStringElements(ss7Req, param, value);
+           }
+           else {
+               // skip unknown params
                 p1 += *(p1+1)+2;
                 continue;
-            }
-
-            plen = *(p1+1);
-            p1 += 2;
-            *requestElement = (u8*)malloc(plen);
-            memcpy(*requestElement, p1, plen);
-            (*requestElementSize) += plen;
-            for(int i=0; i<plen; i++, p1++)
-                sprintf(value,"%s%c%c", value, BIN2CH(*p1/16), BIN2CH(*p1%16));
-            AssignStringElements(ss7Req, param, value);
+           }
         }
 
-        for(i=ss7Req.receivedVectorsNum; i<ss7Req.requestedVectorsNum; i++)
+        for(i=ss7Req.receivedVectorsNum; i<ss7Req.requestedVectorsNum; i++) {
             if(ss7Req.binRAND[i] && ss7Req.binKC[i] && ss7Req.binSRES[i] )
                 // correct triplet received, count further
                 continue;
@@ -2129,6 +2153,7 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
                 else {
                     break;
                 }
+            }
 
         if(i > ss7Req.receivedVectorsNum) {
             ss7Req.receivedVectorsNum = i;

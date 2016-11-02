@@ -16,7 +16,7 @@ LIBS += "C:/DSI/LIB32/gctlib.lib" \
 HEADERS += \
     mtu.h \
     pspacket.h \
-    authinforequest.h
+    authinfo.h
 
 
 SOURCES += \
@@ -24,10 +24,11 @@ SOURCES += \
     mtu_main.cpp \
     mtu_fmt.cpp \
     mtu.cpp \
-    authinforequest.cpp
+    authinfo.cpp
 
 
 QMAKE_LFLAGS = -static -static-libgcc
+QMAKE_CXXFLAGS += -std=gnu++0x
 CONFIG += static
 DEFINES += STATIC
 message("~~~ static build ~~~")

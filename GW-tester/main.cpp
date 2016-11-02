@@ -71,7 +71,7 @@ int ConnectToSS7Gateway(const char* ipAddress, int port)
 #ifdef WIN32
     WSADATA wsaData;
     if(WSAStartup(MAKEWORD(2,2), &wsaData)) {
-      printf("Error inititialing Winsock: %ld. Initialization failed.", SOCK_ERR);
+      printf("Error inititialing Winsock: %d. Initialization failed.", SOCK_ERR);
       return -1;
     }
 #endif
@@ -91,7 +91,7 @@ int ConnectToSS7Gateway(const char* ipAddress, int port)
     serv_addr.sin_port = htons(port);
 
     if(connect(sock,(sockaddr*) &serv_addr, sizeof( serv_addr ))==-1) {
-        printf("Failed connecting to host %s. Error code=%ld. Initialization failed.", ipAddress, SOCK_ERR);
+        printf("Failed connecting to host %s. Error code=%d. Initialization failed.", ipAddress, SOCK_ERR);
         shutdown( sock, 2 );
 #ifdef WIN32
         closesocket( sock );
@@ -107,7 +107,7 @@ int ConnectToSS7Gateway(const char* ipAddress, int port)
     u_long iMode=1;
     if(ioctlsocket(sock, FIONBIO, &iMode) != 0) {
         // Catch error
-        printf("Error setting socket in non-blocking mode: %ld. Initialization failed.", SOCK_ERR);
+        printf("Error setting socket in non-blocking mode: %d. Initialization failed.", SOCK_ERR);
         return -1;
     }
 #else
@@ -121,7 +121,7 @@ std::string PrintBinaryDump(const unsigned char* data, size_t size)
 {
     const size_t buffer_size = 2048;
     char buffer[buffer_size];
-    int i = 0;
+    size_t i = 0;
     for (; i < size; i++) {
         if (3 * (i + 1) >= buffer_size - 1)
             break;
@@ -218,7 +218,7 @@ void ProcessManualRequest(char c, const char* imsiFilename, unsigned char* buffe
         }
 
         if(send(socket, (char*)buffer, len, 0) <= 0) {
-            printf("Error sending data on socket: %ld\n" ,SOCK_ERR);
+            printf("Error sending data on socket: %d\n" ,SOCK_ERR);
             return;
         }
     }
@@ -246,10 +246,12 @@ int main(int argc, char *argv[])
     else
         port=5100;
 
-    if(argc>3)
-        imsi_file=argv[3];
-    else
-        imsi_file="IMSI.txt";
+    if(argc>3) {
+        imsi_file = argv[3];
+    }
+    else {
+        imsi_file = "IMSI.txt";
+    }
 
     int sock = ConnectToSS7Gateway(argv[1], port);
     if (sock < 0) {
@@ -268,7 +270,7 @@ int main(int argc, char *argv[])
         if ( select( sock + 1, &read_set, NULL, NULL, &tv ) !=0  ) {
             int bytesReceived = recv(sock, (char*)buffer, 2048, 0);
             if(bytesReceived <= 0) {
-                printf("Error receiving data on socket: %ld\n" ,SOCK_ERR);
+                printf("Error receiving data on socket: %d\n" ,SOCK_ERR);
                 exit(1);
             }
 

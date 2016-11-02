@@ -1,4 +1,4 @@
-#include "authinforequest.h"
+#include "authinfo.h"
 
 AuthInfoRequest::AuthInfoRequest()
 {

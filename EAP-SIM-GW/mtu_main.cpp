@@ -11,6 +11,7 @@
  */
 
 #include "mtu.h"
+#include "authinfo.h"
 #include "PS_Common.h"
 #include "PSPacket.h"
 
@@ -46,10 +47,6 @@
 #endif
 
 const int FIXED_IMSI_LEN = 15;
-//const int MIN_TRIPLETS_NUM = 1;
-//const int MAX_TRIPLETS_NUM = 5;
-//const int MIN_QUINTUPLETS_REQUEST_NUM = 1;
-//const int MAX_QUINTUPLETS_REQUEST_NUM = 5;
 
 GW_OPTIONS gwOptions;
 GTT_ENTRY gttTable[MAX_GTT_TABLE_SIZE];
@@ -620,7 +617,7 @@ void AddAuthInfoToResponse(CPSPacket& pspResponse, u16 attrID, size_t totalSize,
 {
     u8* buffer = (u8*) malloc(totalSize);
     u16 oneElementSize = totalSize / elementsNum;
-    for (int i = 0; i < elementsNum; i++) {
+    for (size_t i = 0; i < elementsNum; i++) {
         memcpy(buffer + i*oneElementSize, data[i], oneElementSize);
     }
     pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),
@@ -628,9 +625,9 @@ void AddAuthInfoToResponse(CPSPacket& pspResponse, u16 attrID, size_t totalSize,
     free(buffer);
 }
 
+
 void FillPacketWithReceivedTriplets(SS7_REQUEST& ss7Req, CPSPacket& responsePacket)
 {
-    responsePacket.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_RESULT,"00",2);
     if(ss7Req.receivedVectorsNum>0) {
         responsePacket.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),RS_RAND1,
                             ss7Req.rand[0],strlen(ss7Req.rand[0]));
@@ -674,6 +671,20 @@ void FillPacketWithReceivedTriplets(SS7_REQUEST& ss7Req, CPSPacket& responsePack
 }
 
 
+void PrintBinaryDumpToString(char* string, size_t stringSize, const unsigned char* data, size_t dataSize)
+{
+    //const size_t buffer_size = 2048;
+    //char buffer[buffer_size];
+    size_t i = 0;
+    for (; i < dataSize; i++) {
+        if (2 * (i + 1) >= stringSize - 1)
+            break;
+        sprintf(&string[2 * i], "%02x ", data[i]);
+    }
+    string[2 * (i + 1)] = '\0';
+}
+
+
 void SendRequestResultToClient(int dlg_id)
 {
     char address_buffer[64];
@@ -681,12 +692,23 @@ void SendRequestResultToClient(int dlg_id)
     const int REQUEST_SUCCESS = 0;
     const int REQUEST_FAILURE = 1;
 
+    log("New auth vectors count: %d", ss7Req.authVectors.size());
+    for(auto it = ss7Req.authVectors.begin(); it != ss7Req.authVectors.end(); it++) {
+        log("vector type: %s", it->getType() == QUINTUPLET ? "QUINTUPLET" : "TRIPLET");
+        for(auto attrIt = it->attrs.begin(); attrIt != it->attrs.end(); attrIt++) {
+            log("   attr type %d", attrIt->first);
+            char binaryDump[1024];
+            PrintBinaryDumpToString(binaryDump, sizeof(binaryDump), attrIt->second.data.data(), attrIt->second.data.size());
+            log("   %s", binaryDump);
+        }
+    }
+
     int res;
     if (ss7Req.request_type == TRIPLET_REQUEST) {
         res = pspResponse.Init((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),
                                ss7Req.clientRequestNum, RS_TRIP_REQ);
        }
-    else {
+    else if (ss7Req.request_type == QUINTUPLET_REQUEST) {
         res = pspResponse.Init((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),
                                ss7Req.gatewayRequestID, SS7GW_QUINTUPLET_RESP);
     }
@@ -699,17 +721,25 @@ void SendRequestResultToClient(int dlg_id)
 
     if (ss7Req.successful) {
         if (ss7Req.request_type == TRIPLET_REQUEST) {
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer,sizeof(socket_send_buffer),PS_RESULT, "00", 2);
             FillPacketWithReceivedTriplets(ss7Req, pspResponse);
         }
         else  {
             AddULongAttrToPacket(pspResponse, PS_RESULT, REQUEST_SUCCESS, (u8*)socket_send_buffer, sizeof(socket_send_buffer));
             AddUShortAttrToPacket(pspResponse, ATTR_RECEIVED_VECTORS, ss7Req.receivedVectorsNum,
                                    (u8*)socket_send_buffer, sizeof(socket_send_buffer));
-            AddAuthInfoToResponse(pspResponse, ATTR_RAND, ss7Req.binRANDsize, ss7Req.binRANDnum, ss7Req.binRAND);
-            AddAuthInfoToResponse(pspResponse, ATTR_AUTN, ss7Req.binAUTNsize, ss7Req.binAUTNnum, ss7Req.binAUTN);
-            AddAuthInfoToResponse(pspResponse, ATTR_XRES, ss7Req.binXRESsize, ss7Req.binXRESnum, ss7Req.binXRES);
-            AddAuthInfoToResponse(pspResponse, ATTR_CK, ss7Req.binCKsize, ss7Req.binCKnum, ss7Req.binCK);
-            AddAuthInfoToResponse(pspResponse, ATTR_IK, ss7Req.binIKsize, ss7Req.binIKnum, ss7Req.binIK);
+            ss7Req.FillConcatenatedVectors();
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer, sizeof(socket_send_buffer),
+                                ATTR_RAND, reinterpret_cast<void*>(ss7Req.concatRAND.data()), ss7Req.concatRAND.size());
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer, sizeof(socket_send_buffer),
+                                ATTR_XRES, reinterpret_cast<void*>(ss7Req.concatXRES.data()), ss7Req.concatXRES.size());
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer, sizeof(socket_send_buffer),
+                                ATTR_CK, reinterpret_cast<void*>(ss7Req.concatCK.data()), ss7Req.concatCK.size());
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer, sizeof(socket_send_buffer),
+                                ATTR_IK, reinterpret_cast<void*>(ss7Req.concatIK.data()), ss7Req.concatIK.size());
+            pspResponse.AddAttr((SPSRequest*)socket_send_buffer, sizeof(socket_send_buffer),
+                                ATTR_AUTN, reinterpret_cast<void*>(ss7Req.concatAUTN.data()), ss7Req.concatAUTN.size());
+
         }
         log(">>> Request ID %d SUCCESS. Dialogue_id 0x%04x, IMSI %s, vectors requested %d, vectors received %d. "
             "Sending %d bytes to %s.(connection #%d).",
@@ -831,7 +861,6 @@ bool SendRequestConfirmation(REQUEST_TYPE ss7ReqType, bool requestAccepted, u32 
         fprintf(stderr, "%s: Initializing response buffer failed, buffer too small\n", program);
         return false;
     }
-    u32 resultCode;
     if(requestAccepted) {
         // request accepted, send confirmation to client
         if (ss7ReqType == TRIPLET_REQUEST) {
@@ -1160,7 +1189,7 @@ bool ProcessSocketEvents()
     FD_ZERO( &write_set );
     FD_SET( listen_socket, &read_set );
     int max_socket = listen_socket;
-    for(int i = 0; i < gwOptions.max_connections; i++) {
+    for(size_t i = 0; i < gwOptions.max_connections; i++) {
         if(client_socket[i] != FREE_SOCKET) {
             FD_SET( client_socket[i], &read_set );
             if(client_socket[i] > max_socket)
