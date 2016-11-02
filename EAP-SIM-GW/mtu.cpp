@@ -2029,117 +2029,57 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
 
             switch(param) {
             case MAPPN_RAND1:
-//                requestElement = &(ss7Req.binRAND[0]);
-//                break;
             case MAPPN_RAND2:
-//                requestElement = &(ss7Req.binRAND[1]);
-//                break;
             case MAPPN_RAND3:
-//                requestElement = &(ss7Req.binRAND[2]);
-//                break;
             case MAPPN_RAND4:
-//                requestElement = &(ss7Req.binRAND[3]);
-//                break;
             case MAPPN_RAND5:
                 requestElement = &(ss7Req.binRAND[ss7Req.binRANDnum++]);
                 requestElementSize = &ss7Req.binRANDsize;
                 break;
             case MAPPN_KC1:
-//                requestElement = &(ss7Req.binKC[0]);
-//                break;
             case MAPPN_KC2:
-//                requestElement = &(ss7Req.binKC[1]);
-//                break;
             case MAPPN_KC3:
-//                requestElement = &(ss7Req.binKC[2]);
-//                break;
             case MAPPN_KC4:
-//                requestElement = &(ss7Req.binKC[3]);
-//                break;
             case MAPPN_KC5:
                 requestElement = &(ss7Req.binKC[ss7Req.binKCnum++]);
                 requestElementSize = &ss7Req.binKCsize;
                 break;
             case MAPPN_SRES1:
-//                requestElement = &(ss7Req.binSRES[0]);
-//                break;
             case MAPPN_SRES2:
-//                requestElement = &(ss7Req.binSRES[1]);
-//                break;
             case MAPPN_SRES3:
-//                requestElement = &(ss7Req.binSRES[2]);
-//                break;
             case MAPPN_SRES4:
-//                requestElement = &(ss7Req.binSRES[3]);
-//                break;
             case MAPPN_SRES5:
                 requestElement = &(ss7Req.binSRES[ss7Req.binSRESnum++]);
                 requestElementSize = &ss7Req.binSRESsize;
                 break;
             case MAPPN_XRES1:
-//                requestElement = &(ss7Req.binXRES[0]);
-//                log("requestElement = ss7Req.binXRES[0];");
-//                break;
             case MAPPN_XRES2:
-//                requestElement = &(ss7Req.binXRES[1]);
-//                break;
             case MAPPN_XRES3:
-//                requestElement = &(ss7Req.binXRES[2]);
-//                break;
             case MAPPN_XRES4:
-//                requestElement = &(ss7Req.binXRES[3]);
-//                break;
             case MAPPN_XRES5:
                 requestElement = &(ss7Req.binXRES[ss7Req.binXRESnum++]);
                 requestElementSize = &ss7Req.binXRESsize;
                 break;
             case MAPPN_CK1:
-//                requestElement = &(ss7Req.binCK[0]);
-//                log("requestElement = ss7Req.binCK[0];");
-//                break;
             case MAPPN_CK2:
-//                requestElement = &(ss7Req.binCK[1]);
-//                break;
             case MAPPN_CK3:
-//                requestElement = &(ss7Req.binCK[2]);
-//                break;
             case MAPPN_CK4:
-//                requestElement = &(ss7Req.binCK[3]);
-//                break;
             case MAPPN_CK5:
                 requestElement = &(ss7Req.binCK[ss7Req.binCKnum++]);
                 requestElementSize = &ss7Req.binCKsize;
                 break;
             case MAPPN_IK1:
-//                requestElement = &(ss7Req.binIK[0]);
-//                log("requestElement = ss7Req.binIK[0];");
-//                break;
             case MAPPN_IK2:
-//                requestElement = &(ss7Req.binIK[1]);
-//                break;
             case MAPPN_IK3:
-//                requestElement = &(ss7Req.binIK[2]);
-//                break;
             case MAPPN_IK4:
-//                requestElement = &(ss7Req.binIK[3]);
-//                break;
             case MAPPN_IK5:
                 requestElement = &(ss7Req.binIK[ss7Req.binIKnum++]);
                 requestElementSize = &ss7Req.binIKsize;
                 break;
             case MAPPN_AUTN1:
-//                requestElement = &(ss7Req.binAUTN[0]);
-//                log("requestElement = ss7Req.binAUTN[0];");
-//                break;
             case MAPPN_AUTN2:
-//                requestElement = &(ss7Req.binAUTN[1]);
-//                break;
             case MAPPN_AUTN3:
-//                requestElement = &(ss7Req.binAUTN[2]);
-//                break;
             case MAPPN_AUTN4:
-//                requestElement = &(ss7Req.binAUTN[3]);
-//                break;
             case MAPPN_AUTN5:
                 requestElement = &(ss7Req.binAUTN[ss7Req.binAUTNnum++]);
                 requestElementSize = &ss7Req.binAUTNsize;
@@ -2155,20 +2095,17 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
             *requestElement = (u8*)malloc(plen);
             memcpy(*requestElement, p1, plen);
             (*requestElementSize) += plen;
-            log("Auth info part: %02x%02x%02x%02x", requestElement[0][0], requestElement[0][1], requestElement[0][2], requestElement[0][3]);
             for(int i=0; i<plen; i++, p1++)
                 sprintf(value,"%s%c%c", value, BIN2CH(*p1/16), BIN2CH(*p1%16));
             AssignStringElements(ss7Req, param, value);
         }
 
         for(i=ss7Req.receivedVectorsNum; i<ss7Req.requestedVectorsNum; i++)
-            //if(strlen(ss7Req.rand[i])>0 && strlen(ss7Req.kc[i])>0 && strlen(ss7Req.sres[i])>0 )
             if(ss7Req.binRAND[i] && ss7Req.binKC[i] && ss7Req.binSRES[i] )
                 // correct triplet received, count further
                 continue;
             else
                 // check for quintuplet
-                //if(strlen(ss7Req.rand[i])>0 && strlen(ss7Req.xres[i])>0 && strlen(ss7Req.ck[i])>0 && strlen(ss7Req.ik[i])>0 && strlen(ss7Req.autn[i])>0 ) {
                 if(ss7Req.binRAND[i] && ss7Req.binXRES[i] && ss7Req.binCK[i] && ss7Req.binIK[i] && ss7Req.binAUTN[i]) {
                     // Translate quintuplet to triplet according to 3GPP TS 33.102, change request CR 24r2
                     // TS: http://www.3gpp.org/DynaReport/33102.htm

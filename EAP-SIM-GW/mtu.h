@@ -278,8 +278,8 @@ typedef struct
 
 
 enum REQUEST_TYPE {
-    tripletRequest,
-    quintupletRequest
+    TRIPLET_REQUEST,
+    QUINTUPLET_REQUEST
 } ;
 
 
@@ -292,8 +292,67 @@ enum REQUEST_STATE {
     rs_finished
 } ;
 
-typedef struct
+struct SS7_REQUEST
 {
+    SS7_REQUEST(REQUEST_TYPE rt, u16 cltReqNum, u32 gwID, const char* reqIMSI, u8 reqVectors,
+                int sock, u16 dlgID) :
+        request_type(rt),
+        clientRequestNum(cltReqNum),
+        gatewayRequestID(gwID),
+        requestedVectorsNum(reqVectors),
+        receivedVectorsNum(0),
+        sockIndex(sock),
+        ss7dialogueID(dlgID)
+    {
+        ss7invokeID = 1;        // Use the same invoke_id
+        strncpy(imsi, reqIMSI, sizeof(imsi));
+        for (int i = 0; i < MAX_VECTORS_NUM; i++) {
+            binRAND[i] = NULL;
+            binXRES[i] = NULL;
+            binCK[i] = NULL;
+            binIK[i] = NULL;
+            binAUTN[i] = NULL;
+            binKC[i] = NULL;
+            binSRES[i] = NULL;
+        }
+        binRANDnum = 0;
+        binKCnum = 0;
+        binSRESnum = 0;
+        binXRESnum = 0;
+        binCKnum = 0;
+        binIKnum = 0;
+        binAUTNnum = 0;
+
+        binRANDsize = 0;
+        binSRESsize = 0;
+        binKCsize = 0;
+        binXRESsize = 0;
+        binCKsize = 0;
+        binIKsize = 0;
+        binAUTNsize = 0;
+
+        rand[0][0]=0;
+        rand[1][0]=0;
+        rand[2][0]=0;
+        rand[3][0]=0;
+        rand[4][0]=0;
+        kc[0][0]=0;
+        kc[1][0]=0;
+        kc[2][0]=0;
+        kc[3][0]=0;
+        kc[4][0]=0;
+        sres[0][0]=0;
+        sres[1][0]=0;
+        sres[2][0]=0;
+        sres[3][0]=0;
+        sres[4][0]=0;
+        successful=false;
+
+        time(&stateChangeTime);
+
+
+    }
+
     REQUEST_TYPE request_type;
     u16 clientRequestNum;
     u32 gatewayRequestID;
@@ -340,7 +399,31 @@ typedef struct
 
     bool successful;
     std::string error;
-} SS7_REQUEST;
+
+    ~SS7_REQUEST() {
+        for (int i = 0; i < binRANDnum; i++)    {
+            free(binRAND[i]);
+        }
+        for (int i = 0; i < binSRESnum; i++)    {
+            free(binSRES[i]);
+        }
+        for (int i = 0; i < binXRESnum; i++)    {
+            free(binXRES[i]);
+        }
+        for (int i = 0; i < binCKnum; i++)    {
+            free(binCK[i]);
+        }
+        for (int i = 0; i < binIKnum; i++)    {
+            free(binIK[i]);
+        }
+        for (int i = 0; i < binAUTNnum; i++)    {
+            free(binAUTN[i]);
+        }
+        for (int i = 0; i < binKCnum; i++)    {
+            free(binKC[i]);
+        }
+    }
+};
 
 typedef struct
 {
@@ -368,6 +451,7 @@ int MTU_srv_req_to_msg(MSG *m, MTU_MSG *srv_req);
 int MTU_get_scts(u8 *time_stamp);
 u8  MTU_str_to_def_alph(char *ascii_str, u8 *da_octs, u8 *da_len, u8 max_octs);
 u8  MTU_USSD_str_to_def_alph(char *ascii_str, u8 *da_octs, u8 *da_len, u8 max_octs);
+
 
 
 

@@ -22,6 +22,14 @@
 #include "ps_common.h"
 #include "PSPacket.h"
 
+const int PARSE_SUCCESS = 0;
+
+enum Mode
+{
+    MANUAL_TESTS,
+    AUTO_TESTS
+};
+
 #ifdef WIN32
     #define SOCK_ERR WSAGetLastError()
 #else
@@ -124,32 +132,110 @@ std::string PrintBinaryDump(const unsigned char* data, size_t size)
 
 }
 
+
+int ParseNextResponseFromBuffer(unsigned char* buffer, int dataLen)
+{
+    __uint32_t requestNum;
+    __uint16_t requestType;
+    __uint16_t packetLen = 0;
+    char szTextParse[2048];
+    std::multimap<__uint16_t, SPSReqAttrParsed> mmRequest;
+    const int VALIDATE_PACKET = 1;
+    CPSPacket spPacket;
+    SPSRequest *pspRequest = (SPSRequest *)buffer;
+    mmRequest.clear();
+    int parseRes = spPacket.Parse(pspRequest, dataLen, requestNum, requestType, packetLen, mmRequest, VALIDATE_PACKET);
+    if (parseRes == PARSE_SUCCESS) {
+        if (requestType == SS7GW_QUINTUPLET_RESP || requestType == SS7GW_QUINTUPLET_CONF) {
+            std::cout << "requestType: " << std::hex << requestType << ", requestNum: " << requestNum << std::endl;
+            for(auto it = mmRequest.begin(); it != mmRequest.end(); it++) {
+                size_t dataLen = it->second.m_usDataLen;
+                std::cout << "AttrID: " << std::hex << it->second.m_usAttrType
+                          << ", len: " << std::dec << dataLen << std::endl;
+                unsigned char* data = static_cast<unsigned char*>(it->second.m_pvData);
+                std::cout  << PrintBinaryDump(data, dataLen) << std::endl;
+            }
+        }
+        else {
+            spPacket.Parse(pspRequest, 2048, szTextParse, 2048);
+            printf("%s\n",szTextParse );
+        }
+    }
+    else {
+        std::cout << "Parsing response packet failed" << std::endl;
+        return dataLen;
+    }
+    return packetLen;
+}
+
+void ProcessManualRequest(char c, const char* imsiFilename, unsigned char* buffer, int bufferSize,
+                          unsigned short requestNum, int socket)
+{
+    unsigned long requestType;
+    unsigned short vectorsNum;
+    if (c >= '6') {
+        requestType = SS7GW_QUINTUPLET_REQ;
+        vectorsNum = c - '5';
+    }
+    else {
+        requestType = SS7GW_IMSI_REQ;
+        vectorsNum = c - '0';
+    }
+    FILE* imsiFile = fopen(imsiFilename, "r");
+    if(!imsiFile) {
+        printf("Unable to open imsi file %s\n",imsiFilename);
+        return;
+    }
+    char imsi[50];
+    while(fgets(imsi, 50, imsiFile)) {
+        if(imsi[strlen(imsi)-1] == '\n')
+            imsi[strlen(imsi)-1] = '\0';
+        printf("Requesting %d auth vectors for IMSI %s\n", vectorsNum, imsi);
+        CPSPacket psPacket;
+
+        if(psPacket.Init((SPSRequest*)buffer, bufferSize, requestNum++, requestType)) {
+            // error - buffer too small
+            printf("SPSRequest.Init failed, buffer too small" );
+            return;
+        }
+
+        if(!psPacket.AddAttr((SPSRequest*)buffer, 2048, SS7GW_IMSI,(const void *)imsi, strlen(imsi))) {
+            // error - buffer too small
+            printf("SPSRequest.AddAttr imsi failed, buffer too small" );
+            return;
+        }
+        unsigned long len;
+        if (requestType == SS7GW_QUINTUPLET_REQ) {
+            unsigned short vectorsNumN = htons(vectorsNum);
+            len = psPacket.AddAttr((SPSRequest*)buffer,2048, ATTR_REQUESTED_VECTORS, (const void *)&vectorsNumN,
+                                   sizeof(vectorsNumN)) ;
+        }
+        else {
+            char numberOfTriplets[3];
+            sprintf(numberOfTriplets, "%02d", vectorsNum);
+            len = psPacket.AddAttr((SPSRequest*)buffer,2048, SS7GW_TRIP_NUM, (const void *)numberOfTriplets,
+                                  strlen(numberOfTriplets)) ;
+        }
+
+        if(send(socket, (char*)buffer, len, 0) <= 0) {
+            printf("Error sending data on socket: %ld\n" ,SOCK_ERR);
+            return;
+        }
+    }
+    if (imsiFile) {
+        fclose(imsiFile);
+    }
+
+    std::cout << std::endl <<"IMSI are sent, waiting for responses ..." << std::endl;
+}
+
 int main(int argc, char *argv[])
 {
-    char buffer[2048];
-    int  n, nBytesReceived, res;
-
-    CPSPacket psPacket;
-    //SPSRequest
-    unsigned int uiReqNum=1;
-
-    char szNumberOfTriplets[3];
-
-
-    CPSPacket spPacket;
-    __uint32_t ui32ReqNum = 1;
-    __uint16_t ui16ReqType;
-    __uint16_t ui16PackLen;
-    char szTextParse[2048];
-    //char szIMSI[20];
-    //char* pszIMSI[6]={"250993254188441","250540000000011","250540000000010","250018302304209","250018302304208","250027415378891"  };
-
+    unsigned char buffer[2048];
+    unsigned int requestNum = 1;
     char* imsi_file;
-    FILE* fIMSI=NULL;
-    char imsi[50];
     int port;
-    SPSRequest *pspRequest;
-    int nBytesProcessed;
+    Mode mode = MANUAL_TESTS;
 
     if(argc<2) {
         printf("Usage: gw-tester ip_address [port] [IMSI_file]");
@@ -170,7 +256,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    std::cout << "Enter number of vectors from 1 to 5 for triplets or from 6 to 9 for quintuplets: ";
+    std::cout << "Enter number of vectors: 1-5 for triplets, 6-9 for quintuplets or 'a' for auto tests: ";
     while(true) {
         fd_set read_set;
         struct timeval tv;
@@ -179,42 +265,20 @@ int main(int argc, char *argv[])
         FD_ZERO( &read_set );
         FD_SET( sock, &read_set );
 
-        if ( (res = select( sock + 1, &read_set, NULL, NULL, &tv )) !=0  ) {
-            nBytesReceived = recv(sock, buffer, 2048, 0);
-            if(nBytesReceived <= 0) {
+        if ( select( sock + 1, &read_set, NULL, NULL, &tv ) !=0  ) {
+            int bytesReceived = recv(sock, (char*)buffer, 2048, 0);
+            if(bytesReceived <= 0) {
                 printf("Error receiving data on socket: %ld\n" ,SOCK_ERR);
                 exit(1);
             }
 
-            printf("\n%d bytes received.\n",nBytesReceived);
+            printf("\n%d bytes received.\n",bytesReceived);
 
-            nBytesProcessed = 0;
-            while(nBytesProcessed < nBytesReceived) {
-               std::multimap<__uint16_t,SPSReqAttr*> mmRequest;
-               pspRequest=(SPSRequest *)(buffer+nBytesProcessed);
-               mmRequest.clear();
-               spPacket.Parse(pspRequest, 2048, ui32ReqNum, ui16ReqType, ui16PackLen, mmRequest, 1);
-               if (ui16ReqType == SS7GW_QUINTUPLET_RESP || ui16ReqType == SS7GW_QUINTUPLET_CONF) {
-                   std::cout << "requestType: " << std::hex << ui16ReqType << ", requestNum: " << ui32ReqNum << std::endl;
-                   for(auto it = mmRequest.begin(); it != mmRequest.end(); it++) {
-                       size_t dataLen = ntohs(((SPSReqAttr*)(it->second))->m_usAttrLen) - sizeof(SPSReqAttr);
-                       std::cout << "AttrID: " << std::hex << ntohs(((SPSReqAttr*)(it->second))->m_usAttrType)
-                                 << ", len: " << std::dec << dataLen << std::endl;
-                       unsigned char* data = (unsigned char*)(it->second) + sizeof(SPSReqAttr);
-                       std::cout  << PrintBinaryDump(data, dataLen) << std::endl;
-                   }
-               }
-               else {
-                       spPacket.Parse(pspRequest, 2048, szTextParse, 2048);
-                       printf("%s\n",szTextParse );
-               }
-               if(ui16PackLen >= 0)
-                  nBytesProcessed += ui16PackLen;
-               else
-                  break;
+            int bytesProcessed = 0;
+            while(bytesProcessed < bytesReceived) {
+                bytesProcessed += ParseNextResponseFromBuffer(buffer + bytesProcessed, bytesReceived);
             }
             printf("\n----------------------------\n");
-
         }
         else {
             // select time-out
@@ -228,62 +292,14 @@ int main(int argc, char *argv[])
                 if(c =='q') {
                     exit(0);
                 }
+                if (c == 'a') {
+                    mode = AUTO_TESTS;
 
-                if(c >= '1' and c<='9') {
-                    unsigned long requestType;
-                    unsigned short vectorsNum;
-                    if (c >= '6') {
-                        requestType = SS7GW_QUINTUPLET_REQ;
-                        vectorsNum = c - '5';
-                    }
-                    else {
-                        requestType = SS7GW_IMSI_REQ;
-                        vectorsNum = c - '0';
-                    }
-                    fIMSI=fopen(imsi_file,"r");
-                    if(!fIMSI) {
-                        printf("Unable to open imsi file %s\n",imsi_file);
-                        continue;
-                    }
+                }
 
-                    //for(int i=0;i<6;i++) {
-                    while(fgets(imsi,50,fIMSI)) {
-                        if(imsi[strlen(imsi)-1] == '\n')
-                            imsi[strlen(imsi)-1] = '\0';
-                        printf("Requesting %d auth vectors for IMSI %s\n", vectorsNum, imsi);
-
-                        if(psPacket.Init((SPSRequest*)buffer, 2048, uiReqNum++, requestType)) {
-                            // error - buffer too small
-                            printf("SPSRequest.Init failed, buffer too small" );
-                            break;
-                        }
-
-                        if(!psPacket.AddAttr((SPSRequest*)buffer, 2048, SS7GW_IMSI,(const void *)imsi,strlen(imsi))) {
-                            // error - buffer too small
-                            printf("SPSRequest.AddAttr szIMSI failed, buffer too small" );
-                            break;
-                        }
-                        unsigned long len;
-                        if (requestType == SS7GW_QUINTUPLET_REQ) {
-                            unsigned short vectorsNumN = htons(vectorsNum);
-                            len = psPacket.AddAttr((SPSRequest*)buffer,2048, ATTR_REQUESTED_VECTORS, (const void *)&vectorsNumN,
-                                                   sizeof(vectorsNumN)) ;
-                        }
-                        else {
-                           sprintf(szNumberOfTriplets, "%02d", vectorsNum);
-                           len = psPacket.AddAttr((SPSRequest*)buffer,2048, SS7GW_TRIP_NUM, (const void *)szNumberOfTriplets,
-                                                  strlen(szNumberOfTriplets)) ;
-                        }
-
-                        n=send(sock,buffer,len,0);
-                        if(n <= 0) {
-                            printf("Error sending data on socket: %ld\n" ,SOCK_ERR);
-                            break;
-                        }
-                    }
-                    if (fIMSI) fclose(fIMSI);
-
-                    printf("\nIMSI are sent, waiting for responses ...\n");
+                if(c >= '1' and c <= '9') {
+                    mode = MANUAL_TESTS;
+                    ProcessManualRequest(c, imsi_file, buffer, sizeof(buffer), requestNum, sock);
                 }
             }
         }
