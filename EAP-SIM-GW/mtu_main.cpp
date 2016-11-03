@@ -614,6 +614,7 @@ int GetPSAttributeID(AuthAttributeType type, int vectorNum)
             return RS_SRES5;
         }
     }
+    return -1;
 }
 
 
@@ -948,40 +949,18 @@ int ProcessNextRequestFromBuffer(int socketIndex, int buffer_shift, int dataLen)
         SendRequestConfirmation(ss7ReqType, bRequestAccepted, clientRequestNum, gwRequestID, errorDescr, socketIndex);
 
         if(bRequestAccepted) {
-            if(!emulation_mode) {
-                if (MTU_open_dlg(ss7dialogueID, imsi) != 0) {
+            if (MTU_open_dlg(ss7dialogueID, imsi) != 0) {
                   ss7RequestMap.at(ss7dialogueID).state = rs_finished;
                   SendRequestResultToClient(ss7dialogueID);
                   ss7RequestMap.erase(ss7dialogueID);
                   return packetLen;
-                }
-                ss7RequestMap.at(ss7dialogueID).state = rs_wait_opn_cnf;
-                time(&ss7RequestMap.at(ss7dialogueID).stateChangeTime);
             }
-            else {
-                // emulation mode - used when SS7 link is down
-                strcpy(ss7RequestMap.at(ss7dialogueID).rand[0],"e6486dcc5ebc94e3c989a97bd0909f2a");
-                strcpy(ss7RequestMap.at(ss7dialogueID).rand[1],"1b5366727f83d8029db95b0eb2a22f02");
-                strcpy(ss7RequestMap.at(ss7dialogueID).rand[2],"e9e41353b37341ee63f38b7c5a41efef");
-                strcpy(ss7RequestMap.at(ss7dialogueID).sres[0],"e61752eb");
-                strcpy(ss7RequestMap.at(ss7dialogueID).sres[1],"58ecd4a2");
-                strcpy(ss7RequestMap.at(ss7dialogueID).sres[2],"f6dbfa9b");
-                strcpy(ss7RequestMap.at(ss7dialogueID).kc[0],"bc1d4d2b909c1800");
-                strcpy(ss7RequestMap.at(ss7dialogueID).kc[1],"2562db2c4af9f000");
-                strcpy(ss7RequestMap.at(ss7dialogueID).kc[2],"c64cc11999b4b000");
-
-                log("Preset mode: triplets filled out with constant values");
-                ss7RequestMap.at(ss7dialogueID).successful = true;
-                ss7RequestMap.at(ss7dialogueID).receivedVectorsNum = ss7RequestMap.at(ss7dialogueID).requestedVectorsNum;
-                ss7RequestMap.at(ss7dialogueID).state = rs_finished;
-                OnDialogueFinish(ss7dialogueID);
-            }
+            ss7RequestMap.at(ss7dialogueID).state = rs_wait_opn_cnf;
+            time(&ss7RequestMap.at(ss7dialogueID).stateChangeTime);
         }
     }
     return packetLen;
 }
-
-
 
 
 void ProcessPendingSS7Messages()

@@ -32,7 +32,7 @@ enum AuthVectorType
 
 struct AuthInfoAttribute
 {
-    AuthInfoAttribute(u8* buffer, u16 size) :
+    AuthInfoAttribute(const u8* buffer, u16 size) :
         data(buffer, buffer + size)
     {}
 
@@ -44,7 +44,16 @@ class AuthVector
 {
 public:
     void AddAuthAttribute(AuthAttributeType type, const AuthInfoAttribute& attr) {
-        attrs.insert(std::make_pair(type, attr));
+        if (type == XRES && attr.data.size() < MAXIMUM_XRES_LEN) {
+            // fill XRES to maximum allowed length (as a requirement of OpenHSS).
+            // See also TranslateQuintupletToTriplet methods that operates full size XRES.
+            AuthInfoAttribute xres(attr.data.data(), attr.data.size());
+            xres.data.insert(xres.data.end(), MAXIMUM_XRES_LEN - attr.data.size(), 0);
+            attrs.insert(std::make_pair(XRES, xres));
+        }
+        else {
+            attrs.insert(std::make_pair(type, attr));
+        }
     }
 
     bool IsComplete() {
@@ -76,8 +85,7 @@ public:
         // Translate quintuplet to triplet according to 3GPP TS 33.102, change request CR 24r2
         // TS: http://www.3gpp.org/DynaReport/33102.htm
         // Change request: https://www.google.ru/url?sa=t&rct=j&q=&esrc=s&source=web&cd=7&ved=0CF8QFjAG&url=http%3A%2F%2Fwww.3gpp.org%2Fftp%2Ftsg_sa%2Fwg3_security%2FTSGS3_08%2FDocs%2FS3-99451_CR_24r2%2520UMTS%2520GSM%2520interop.rtf&ei=tFIhU67EDMrk4QSG-IDICA&usg=AFQjCNGGnDg3SqX_IEz4gtYBybVG7GgvRw&sig2=eSfKkWaHkBQ9zDAx3lYGgw&bvm=bv.62922401,d.bGE&cad=rja
-        const int STANDARD_CK_LEN = 16;
-        const int STANDARD_IK_LEN = 16;
+
         if (getType() != QUINTUPLET && getType() != BOTH_TRIPLET_AND_QUINTUPLET) {
             return false;
         }
@@ -101,7 +109,7 @@ public:
         auto ckIt = attrs.find(CK);
         auto ikIt = attrs.find(IK);
         if (ckIt == attrs.end() || ikIt == attrs.end() ||
-                ckIt->second.data.size() != STANDARD_CK_LEN || ikIt->second.data.size() != STANDARD_IK_LEN) {
+                ckIt->second.data.size() != FIXED_CK_LEN || ikIt->second.data.size() != FIXED_IK_LEN) {
             return false;
         }
         u64 ck1, ck2, ik1, ik2;
@@ -116,6 +124,9 @@ public:
 
     std::map<AuthAttributeType, AuthInfoAttribute> attrs;
 private:
+    const static int MAXIMUM_XRES_LEN = 16;
+    const static int FIXED_CK_LEN = 16;
+    const static int FIXED_IK_LEN = 16;
     std::set<AuthAttributeType> attrTypesCollected;
 
     bool Collected(AuthAttributeType type) {
@@ -152,21 +163,6 @@ struct SS7_REQUEST
         ss7invokeID = 1;        // Use the same invoke_id
         strncpy(imsi, reqIMSI, sizeof(imsi));
 
-        rand[0][0]=0;
-        rand[1][0]=0;
-        rand[2][0]=0;
-        rand[3][0]=0;
-        rand[4][0]=0;
-        kc[0][0]=0;
-        kc[1][0]=0;
-        kc[2][0]=0;
-        kc[3][0]=0;
-        kc[4][0]=0;
-        sres[0][0]=0;
-        sres[1][0]=0;
-        sres[2][0]=0;
-        sres[3][0]=0;
-        sres[4][0]=0;
         successful=false;
         time(&stateChangeTime);
     }
@@ -264,15 +260,6 @@ struct SS7_REQUEST
     u8 ss7invokeID;                 /* Invoke ID for service request */
     REQUEST_STATE state;
     time_t stateChangeTime;
-
-    char rand[MAX_VECTORS_NUM][33];
-    char sres[MAX_VECTORS_NUM][9];
-    char kc[MAX_VECTORS_NUM][17];
-    char xres[MAX_VECTORS_NUM][33];
-    char ck[MAX_VECTORS_NUM][33];
-    char ik[MAX_VECTORS_NUM][33];
-    char autn[MAX_VECTORS_NUM][33];
-
     bool successful;
     std::string error;
 
@@ -283,8 +270,6 @@ struct SS7_REQUEST
     std::vector<u8> concatXRES;
     std::vector<u8> concatCK;
     std::vector<u8> concatIK;
-
-    ~SS7_REQUEST() {}
 };
 
 
