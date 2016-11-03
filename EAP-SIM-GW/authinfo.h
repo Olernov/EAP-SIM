@@ -6,6 +6,8 @@
 #include "mtu.h"
 #include "system.h"
 
+typedef unsigned long long u64;
+
 enum AuthAttributeType
 {
     UNKNOWN,
@@ -23,18 +25,17 @@ enum AuthVectorType
 {
     VECTOR_UNKNOWN,
     TRIPLET,
-    QUINTUPLET
+    QUINTUPLET,
+    BOTH_TRIPLET_AND_QUINTUPLET
 };
 
 
 struct AuthInfoAttribute
 {
-    AuthInfoAttribute(/*AuthAttributeType type, */u8* buffer, u16 size) :
-       // type(type),
+    AuthInfoAttribute(u8* buffer, u16 size) :
         data(buffer, buffer + size)
     {}
 
-    //AuthAttributeType type;
     std::vector<u8> data;
 };
 
@@ -51,10 +52,17 @@ public:
     }
 
     AuthVectorType getType() {
-        if (Collected(RAND) && Collected(XRES) && Collected(CK) && Collected(IK) && Collected(AUTN))
-            return QUINTUPLET;
-        else if (Collected(RAND) && Collected(KC) && Collected(SRES))
+        if (Collected(RAND) && Collected(XRES) && Collected(CK) && Collected(IK) && Collected(AUTN)) {
+            if (Collected(KC) && Collected(SRES)) {
+                return BOTH_TRIPLET_AND_QUINTUPLET;
+            }
+            else {
+                return QUINTUPLET;
+            }
+        }
+        else if (Collected(RAND) && Collected(KC) && Collected(SRES)) {
             return TRIPLET;
+        }
         else {
             return VECTOR_UNKNOWN;
         }
@@ -64,6 +72,47 @@ public:
         return !Collected(type);
     }
 
+    bool TranslateQuintupletToTriplet() {
+        // Translate quintuplet to triplet according to 3GPP TS 33.102, change request CR 24r2
+        // TS: http://www.3gpp.org/DynaReport/33102.htm
+        // Change request: https://www.google.ru/url?sa=t&rct=j&q=&esrc=s&source=web&cd=7&ved=0CF8QFjAG&url=http%3A%2F%2Fwww.3gpp.org%2Fftp%2Ftsg_sa%2Fwg3_security%2FTSGS3_08%2FDocs%2FS3-99451_CR_24r2%2520UMTS%2520GSM%2520interop.rtf&ei=tFIhU67EDMrk4QSG-IDICA&usg=AFQjCNGGnDg3SqX_IEz4gtYBybVG7GgvRw&sig2=eSfKkWaHkBQ9zDAx3lYGgw&bvm=bv.62922401,d.bGE&cad=rja
+        const int STANDARD_CK_LEN = 16;
+        const int STANDARD_IK_LEN = 16;
+        if (getType() != QUINTUPLET && getType() != BOTH_TRIPLET_AND_QUINTUPLET) {
+            return false;
+        }
+        auto xresIt = attrs.find(XRES);
+        if (xresIt == attrs.end()) {
+            return false;
+        }
+        u32 xres[4];
+        u32 sres = 0;
+        for (int i = 0; i < 4; i++) {
+            if (xresIt->second.data.size() >= 4*(i+1)) {
+                xres[i] = *(reinterpret_cast<u32*>(xresIt->second.data.data() + 4*i));
+            }
+            else {
+                xres[i] = 0;
+            }
+            sres ^= xres[i];
+        }
+        attrs.insert(std::make_pair(SRES, AuthInfoAttribute(reinterpret_cast<u8*>(&sres), sizeof(sres))));
+
+        auto ckIt = attrs.find(CK);
+        auto ikIt = attrs.find(IK);
+        if (ckIt == attrs.end() || ikIt == attrs.end() ||
+                ckIt->second.data.size() != STANDARD_CK_LEN || ikIt->second.data.size() != STANDARD_IK_LEN) {
+            return false;
+        }
+        u64 ck1, ck2, ik1, ik2;
+        ck1 = *(reinterpret_cast<u64*>(ckIt->second.data.data()));
+        ck2 = *(reinterpret_cast<u64*>(ckIt->second.data.data() + 8));
+        ik1 = *(reinterpret_cast<u64*>(ikIt->second.data.data()));
+        ik2 = *(reinterpret_cast<u64*>(ikIt->second.data.data() + 8));
+        u64 kc = ck1 ^ ck2 ^ ik1 ^ ik2;
+        attrs.insert(std::make_pair(KC, AuthInfoAttribute(reinterpret_cast<u8*>(&kc), sizeof(kc))));
+        return true;
+    }
 
     std::map<AuthAttributeType, AuthInfoAttribute> attrs;
 private:
@@ -102,30 +151,6 @@ struct SS7_REQUEST
     {
         ss7invokeID = 1;        // Use the same invoke_id
         strncpy(imsi, reqIMSI, sizeof(imsi));
-        for (int i = 0; i < MAX_VECTORS_NUM; i++) {
-            binRAND[i] = NULL;
-            binXRES[i] = NULL;
-            binCK[i] = NULL;
-            binIK[i] = NULL;
-            binAUTN[i] = NULL;
-            binKC[i] = NULL;
-            binSRES[i] = NULL;
-        }
-        binRANDnum = 0;
-        binKCnum = 0;
-        binSRESnum = 0;
-        binXRESnum = 0;
-        binCKnum = 0;
-        binIKnum = 0;
-        binAUTNnum = 0;
-
-        binRANDsize = 0;
-        binSRESsize = 0;
-        binKCsize = 0;
-        binXRESsize = 0;
-        binCKsize = 0;
-        binIKsize = 0;
-        binAUTNsize = 0;
 
         rand[0][0]=0;
         rand[1][0]=0;
@@ -202,6 +227,31 @@ struct SS7_REQUEST
         }
     }
 
+    bool TranslateVectorsToTriplets() {
+        for(auto vectorIt = authVectors.begin(); vectorIt != authVectors.end(); vectorIt++) {
+            switch (vectorIt->getType()) {
+            case TRIPLET:
+                break;
+            case QUINTUPLET:
+                if (!vectorIt->TranslateQuintupletToTriplet()) {
+                    return false;
+                }
+                break;
+             default:
+                return false;
+            }
+        }
+    }
+
+    bool AllVectorsHaveType(AuthVectorType type) {
+        for(auto vectorIt = authVectors.begin(); vectorIt != authVectors.end(); vectorIt++) {
+            if (vectorIt->getType() != type) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     REQUEST_TYPE request_type;
     u16 clientRequestNum;
     u32 gatewayRequestID;
@@ -214,6 +264,7 @@ struct SS7_REQUEST
     u8 ss7invokeID;                 /* Invoke ID for service request */
     REQUEST_STATE state;
     time_t stateChangeTime;
+
     char rand[MAX_VECTORS_NUM][33];
     char sres[MAX_VECTORS_NUM][9];
     char kc[MAX_VECTORS_NUM][17];
@@ -221,30 +272,6 @@ struct SS7_REQUEST
     char ck[MAX_VECTORS_NUM][33];
     char ik[MAX_VECTORS_NUM][33];
     char autn[MAX_VECTORS_NUM][33];
-
-    u8* binRAND[MAX_VECTORS_NUM];
-    u8* binXRES[MAX_VECTORS_NUM];
-    u8* binCK[MAX_VECTORS_NUM];
-    u8* binIK[MAX_VECTORS_NUM];
-    u8* binAUTN[MAX_VECTORS_NUM];
-    u8* binSRES[MAX_VECTORS_NUM];
-    u8* binKC[MAX_VECTORS_NUM];
-
-    u8 binRANDnum;
-    u8 binSRESnum;
-    u8 binKCnum;
-    u8 binXRESnum;
-    u8 binCKnum;
-    u8 binIKnum;
-    u8 binAUTNnum;
-
-    u8 binRANDsize;
-    u8 binSRESsize;
-    u8 binKCsize;
-    u8 binXRESsize;
-    u8 binCKsize;
-    u8 binIKsize;
-    u8 binAUTNsize;
 
     bool successful;
     std::string error;
@@ -257,29 +284,7 @@ struct SS7_REQUEST
     std::vector<u8> concatCK;
     std::vector<u8> concatIK;
 
-    ~SS7_REQUEST() {
-        for (int i = 0; i < binRANDnum; i++)    {
-            free(binRAND[i]);
-        }
-        for (int i = 0; i < binSRESnum; i++)    {
-            free(binSRES[i]);
-        }
-        for (int i = 0; i < binXRESnum; i++)    {
-            free(binXRES[i]);
-        }
-        for (int i = 0; i < binCKnum; i++)    {
-            free(binCK[i]);
-        }
-        for (int i = 0; i < binIKnum; i++)    {
-            free(binIK[i]);
-        }
-        for (int i = 0; i < binAUTNnum; i++)    {
-            free(binAUTN[i]);
-        }
-        for (int i = 0; i < binKCnum; i++)    {
-            free(binKC[i]);
-        }
-    }
+    ~SS7_REQUEST() {}
 };
 
 

@@ -1732,259 +1732,7 @@ void Get32bitPartsOfStr(char* value,u32* part1,u32* part2,u32* part3,u32* part4)
 }
 
 
-void AssignStringElements(SS7_REQUEST& ss7Req, u16 ss7MessageParam, char* value)
-{
-    switch(ss7MessageParam) {
-    case MAPPN_RAND1:
-        if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 0],value,32);
-            ss7Req.rand[ss7Req.receivedVectorsNum + 0][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND1",value);
-        break;
-    case MAPPN_RAND2:
-        if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 1],value,32);
-            ss7Req.rand[ss7Req.receivedVectorsNum + 1][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND2",value);
-        break;
-    case MAPPN_RAND3:
-        if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 2],value,32);
-            ss7Req.rand[ss7Req.receivedVectorsNum + 2][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND3",value);
-        break;
-    case MAPPN_RAND4:
-        if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 3],value,32);
-            ss7Req.rand[ss7Req.receivedVectorsNum + 3][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND4",value);
-        break;
-    case MAPPN_RAND5:
-        if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.rand[ss7Req.receivedVectorsNum + 4],value,32);
-            ss7Req.rand[ss7Req.receivedVectorsNum + 4][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s RAND5",value);
-        break;
-    case MAPPN_KC1:
-        if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.kc[ss7Req.receivedVectorsNum  + 0],value,16);
-            ss7Req.kc[ss7Req.receivedVectorsNum + 0][16]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC1",value);
-        break;
-    case MAPPN_KC2:
-        if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.kc[ss7Req.receivedVectorsNum + 1],value,16);
-            ss7Req.kc[ss7Req.receivedVectorsNum + 1][16]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC1",value);
-        break;
-    case MAPPN_KC3:
-        if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.kc[ss7Req.receivedVectorsNum + 2],value,16);
-            ss7Req.kc[ss7Req.receivedVectorsNum + 2][16]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC3",value);
-        break;
-    case MAPPN_KC4:
-        if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.kc[ss7Req.receivedVectorsNum + 3],value,16);
-            ss7Req.kc[ss7Req.receivedVectorsNum + 3][16]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC4",value);
-        break;
-    case MAPPN_KC5:
-        if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.kc[ss7Req.receivedVectorsNum + 4],value,16);
-            ss7Req.kc[ss7Req.receivedVectorsNum + 4][16]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s KC5",value);
-        break;
-    case MAPPN_SRES1:
-        if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 0],value,8);
-            ss7Req.sres[ss7Req.receivedVectorsNum + 0][8]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES1",value);
-        break;
-    case MAPPN_SRES2:
-        if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 1],value,8);
-            ss7Req.sres[ss7Req.receivedVectorsNum + 1][8]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES2",value);
-        break;
-    case MAPPN_SRES3:
-        if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 2],value,8);
-            ss7Req.sres[ss7Req.receivedVectorsNum + 2][8]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES3",value);
-        break;
-    case MAPPN_SRES4:
-        if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 3],value,8);
-            ss7Req.sres[ss7Req.receivedVectorsNum + 3][8]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES4",value);
-        break;
-    case MAPPN_SRES5:
-        if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.sres[ss7Req.receivedVectorsNum + 4],value,8);
-            ss7Req.sres[ss7Req.receivedVectorsNum + 4][8]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES5",value);
-        break;
-    case MAPPN_XRES1:
-        if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 0],value,32);
-            ss7Req.xres[ss7Req.receivedVectorsNum + 0][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s XRES1",value);
-        break;
-    case MAPPN_XRES2:
-        if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 1],value,32);
-            ss7Req.xres[ss7Req.receivedVectorsNum + 1][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s XRES2",value);
-        break;
-    case MAPPN_XRES3:
-        if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 2],value,32);
-            ss7Req.xres[ss7Req.receivedVectorsNum + 2][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s SRES3",value);
-        break;
-    case MAPPN_XRES4:
-        if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 3],value,32);
-            ss7Req.xres[ss7Req.receivedVectorsNum + 3][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s XRES4",value);
-        break;
-    case MAPPN_XRES5:
-        if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.xres[ss7Req.receivedVectorsNum + 4],value,32);
-            ss7Req.xres[ss7Req.receivedVectorsNum + 4][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s XRES5",value);
-        break;
-    case MAPPN_CK1:
-        if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 0],value,32);
-            ss7Req.ck[ss7Req.receivedVectorsNum + 0][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK1",value);
-        break;
-    case MAPPN_CK2:
-        if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 1],value,32);
-            ss7Req.ck[ss7Req.receivedVectorsNum + 1][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK2",value);
-        break;
-    case MAPPN_CK3:
-        if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 2],value,32);
-            ss7Req.ck[ss7Req.receivedVectorsNum + 2][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK3",value);
-        break;
-    case MAPPN_CK4:
-        if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 3],value,32);
-            ss7Req.ck[ss7Req.receivedVectorsNum + 3][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK4",value);
-        break;
-    case MAPPN_CK5:
-        if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ck[ss7Req.receivedVectorsNum + 4],value,32);
-            ss7Req.ck[ss7Req.receivedVectorsNum + 4][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s CK5",value);
-        break;
-    case MAPPN_IK1:
-        if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 0],value,32);
-            ss7Req.ik[ss7Req.receivedVectorsNum + 0][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK1",value);
-        break;
-    case MAPPN_IK2:
-        if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 1],value,32);
-            ss7Req.ik[ss7Req.receivedVectorsNum + 1][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK2",value);
-        break;
-    case MAPPN_IK3:
-        if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 2],value,32);
-            ss7Req.ik[ss7Req.receivedVectorsNum + 2][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK3",value);
-        break;
-    case MAPPN_IK4:
-        if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 3],value,32);
-            ss7Req.ik[ss7Req.receivedVectorsNum + 3][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK4",value);
-        break;
-    case MAPPN_IK5:
-        if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.ik[ss7Req.receivedVectorsNum + 4],value,32);
-            ss7Req.ik[ss7Req.receivedVectorsNum + 4][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s IK5",value);
-        break;
-    case MAPPN_AUTN1:
-        if(ss7Req.receivedVectorsNum + 0 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 0],value,32);
-            ss7Req.autn[ss7Req.receivedVectorsNum + 0][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN1",value);
-        break;
-    case MAPPN_AUTN2:
-        if(ss7Req.receivedVectorsNum + 1 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 1],value,32);
-            ss7Req.autn[ss7Req.receivedVectorsNum + 1][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN2",value);
-        break;
-    case MAPPN_AUTN3:
-        if(ss7Req.receivedVectorsNum + 2 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 2],value,32);
-            ss7Req.autn[ss7Req.receivedVectorsNum + 2][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN3",value);
-        break;
-    case MAPPN_AUTN4:
-        if(ss7Req.receivedVectorsNum + 3 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 3],value,32);
-            ss7Req.autn[ss7Req.receivedVectorsNum + 3][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN4",value);
-        break;
-    case MAPPN_AUTN5:
-        if(ss7Req.receivedVectorsNum + 4 < ss7Req.requestedVectorsNum) {
-            strncpy(ss7Req.autn[ss7Req.receivedVectorsNum + 4],value,32);
-            ss7Req.autn[ss7Req.receivedVectorsNum + 4][32]=0;
-        }
-        if(gwOptions.log_options && MTU_TRACE_RX) log("Rx: %s AUTN5",value);
-        break;
-    }
-}
-
-AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req,
-                                u8**& requestElement, u8*& requestElementSize)
+AuthAttributeType TranslateMessageParam(u16 param)
 {
     AuthAttributeType authInfoType = UNKNOWN;
     switch(param) {
@@ -1993,8 +1741,6 @@ AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req
     case MAPPN_RAND3:
     case MAPPN_RAND4:
     case MAPPN_RAND5:
-        requestElement = &(ss7Req.binRAND[ss7Req.binRANDnum++]);
-        requestElementSize = &ss7Req.binRANDsize;
         authInfoType = RAND;
         break;
     case MAPPN_KC1:
@@ -2002,8 +1748,6 @@ AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req
     case MAPPN_KC3:
     case MAPPN_KC4:
     case MAPPN_KC5:
-        requestElement = &(ss7Req.binKC[ss7Req.binKCnum++]);
-        requestElementSize = &ss7Req.binKCsize;
         authInfoType = KC;
         break;
     case MAPPN_SRES1:
@@ -2011,8 +1755,6 @@ AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req
     case MAPPN_SRES3:
     case MAPPN_SRES4:
     case MAPPN_SRES5:
-        requestElement = &(ss7Req.binSRES[ss7Req.binSRESnum++]);
-        requestElementSize = &ss7Req.binSRESsize;
         authInfoType = SRES;
         break;
     case MAPPN_XRES1:
@@ -2020,8 +1762,6 @@ AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req
     case MAPPN_XRES3:
     case MAPPN_XRES4:
     case MAPPN_XRES5:
-        requestElement = &(ss7Req.binXRES[ss7Req.binXRESnum++]);
-        requestElementSize = &ss7Req.binXRESsize;
         authInfoType = XRES;
         break;
     case MAPPN_CK1:
@@ -2029,8 +1769,6 @@ AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req
     case MAPPN_CK3:
     case MAPPN_CK4:
     case MAPPN_CK5:
-        requestElement = &(ss7Req.binCK[ss7Req.binCKnum++]);
-        requestElementSize = &ss7Req.binCKsize;
         authInfoType = CK;
         break;
     case MAPPN_IK1:
@@ -2038,8 +1776,6 @@ AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req
     case MAPPN_IK3:
     case MAPPN_IK4:
     case MAPPN_IK5:
-        requestElement = &(ss7Req.binIK[ss7Req.binIKnum++]);
-        requestElementSize = &ss7Req.binIKsize;
         authInfoType = IK;
         break;
     case MAPPN_AUTN1:
@@ -2047,8 +1783,6 @@ AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req
     case MAPPN_AUTN3:
     case MAPPN_AUTN4:
     case MAPPN_AUTN5:
-        requestElement = &(ss7Req.binAUTN[ss7Req.binAUTNnum++]);
-        requestElementSize = &ss7Req.binAUTNsize;
         authInfoType = AUTN;
         break;
     }
@@ -2056,19 +1790,13 @@ AuthAttributeType CheckMessageParamAndSetPointers(u16 param, SS7_REQUEST& ss7Req
 }
 
 
-int ParseTriplets(u16 dlg_id,MSG* msg)
+int ParseAuthInfo(u16 dlg_id,MSG* msg)
 {
     u8 *pptr;
     u16 param;
     u8 *p1;
     int mlen,plen;
     char value[100];
-
-    int i;
-    int xres_len;
-    u32 xres1,xres2,xres3,xres4;
-    u32 ck1,ck2,ck3,ck4;
-    u32 ik1,ik2,ik3,ik4;
 
     try {
         if ((mlen = msg->len) == 0) {
@@ -2087,9 +1815,6 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
             p1 += *(p1+1)+2;
         if(p1>=pptr+mlen) return -1;
 
-        u8** requestElement = NULL;
-        u8* requestElementSize = NULL;
-       // AuthVector authVector;
         while(p1 < pptr+mlen-1) {
             param=*p1;
             if(param==0xf0) {
@@ -2100,22 +1825,17 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
             }
             value[0]=0;
 
-            AuthAttributeType authInfoType =
-                    CheckMessageParamAndSetPointers(param, ss7Req, requestElement, requestElementSize);
-           if (authInfoType != UNKNOWN) {
+            AuthAttributeType authInfoType = TranslateMessageParam(param);
+            if (authInfoType != UNKNOWN) {
                plen = *(p1+1);
                p1 += 2;
-               *requestElement = (u8*)malloc(plen);
-               memcpy(*requestElement, p1, plen);
-               (*requestElementSize) += plen;
                ss7Req.AddAuthAttribute(authInfoType, AuthInfoAttribute(p1, plen));
                if (ss7Req.EnoughVectorsReceived())  {
-                   ss7Req.SetSuccess(true);
+                   break;
                }
 
                for(int i=0; i<plen; i++, p1++)
                    sprintf(value,"%s%c%c", value, BIN2CH(*p1/16), BIN2CH(*p1%16));
-               AssignStringElements(ss7Req, param, value);
            }
            else {
                // skip unknown params
@@ -2124,44 +1844,8 @@ int ParseTriplets(u16 dlg_id,MSG* msg)
            }
         }
 
-        for(i=ss7Req.receivedVectorsNum; i<ss7Req.requestedVectorsNum; i++) {
-            if(ss7Req.binRAND[i] && ss7Req.binKC[i] && ss7Req.binSRES[i] )
-                // correct triplet received, count further
-                continue;
-            else
-                // check for quintuplet
-                if(ss7Req.binRAND[i] && ss7Req.binXRES[i] && ss7Req.binCK[i] && ss7Req.binIK[i] && ss7Req.binAUTN[i]) {
-                    // Translate quintuplet to triplet according to 3GPP TS 33.102, change request CR 24r2
-                    // TS: http://www.3gpp.org/DynaReport/33102.htm
-                    // Change request: https://www.google.ru/url?sa=t&rct=j&q=&esrc=s&source=web&cd=7&ved=0CF8QFjAG&url=http%3A%2F%2Fwww.3gpp.org%2Fftp%2Ftsg_sa%2Fwg3_security%2FTSGS3_08%2FDocs%2FS3-99451_CR_24r2%2520UMTS%2520GSM%2520interop.rtf&ei=tFIhU67EDMrk4QSG-IDICA&usg=AFQjCNGGnDg3SqX_IEz4gtYBybVG7GgvRw&sig2=eSfKkWaHkBQ9zDAx3lYGgw&bvm=bv.62922401,d.bGE&cad=rja
-
-                    // If XRES length less than 16, pad it with '0' symbols
-                    xres_len=strlen(ss7Req.xres[i]);
-                    while(xres_len < 32) {
-                        ss7Req.xres[i][xres_len++]='0';
-                        ss7Req.xres[i][xres_len++]='0';
-                    }
-
-                    Get32bitPartsOfStr(ss7Req.xres[i],&xres1,&xres2,&xres3,&xres4);
-                    sprintf(ss7Req.sres[i],"%08lx", xres1 ^ xres2 ^ xres3 ^ xres4 ); // SRES = xorred 4 parts of XRES
-
-                    Get32bitPartsOfStr(ss7Req.ck[i],&ck1,&ck2,&ck3,&ck4);
-                    Get32bitPartsOfStr(ss7Req.ik[i],&ik1,&ik2,&ik3,&ik4);
-                    sprintf(ss7Req.kc[i],"%08lx%08lx",ck1 ^ ck3 ^ ik1 ^ ik3, ck2 ^ ck4 ^ ik2 ^ ik4); // we operate parts of 64-bit numbers 'cause u32 is noly 32-bit long
-
-                }
-                else {
-                    break;
-                }
-            }
-
-        if(i > ss7Req.receivedVectorsNum) {
-            ss7Req.receivedVectorsNum = i;
-            ss7Req.successful = true;
-        }
-        else {
-            // number of received vectors did not increase
-            ss7Req.error="Unknown format of auth vectors received.";
+        if (ss7Req.EnoughVectorsReceived())  {
+            ss7Req.SetSuccess(true);
         }
         log("Requested %d vectors, received %d", ss7Req.requestedVectorsNum, ss7Req.receivedVectorsNum);
         return 0;
@@ -2331,7 +2015,7 @@ int MTU_wait_serv_cnf(MSG* m,MTU_MSG* msg/*,MTU_DLG* dlg*/)
               ss7RequestMap.at(msg->ss7dialogueID).error=buf;
             }
             else
-                ParseTriplets(msg->ss7dialogueID,m);
+                ParseAuthInfo(msg->ss7dialogueID,m);
 
             /*
              * If the IMSI is present, save it in case it is needed for a
